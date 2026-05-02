@@ -26,7 +26,6 @@ hermes-android-bridge/app/build/
 hermes-android-bridge/build/
 hermes-android-bridge/.gradle/
 hermes-android-bridge/local.properties
-hermes-android-bridge/gradle/wrapper/gradle-wrapper.jar
 
 # Environment
 .env
