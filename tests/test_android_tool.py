@@ -959,3 +959,41 @@ class TestBroadcast:
         )
         result = json.loads(android_broadcast("test"))
         assert "error" in result
+
+
+class TestHardwareUnavailable:
+    @responses.activate
+    def test_send_sms_unavailable(self, bridge_url):
+        responses.add(
+            responses.POST,
+            f"{bridge_url}/send_sms",
+            json={"success": False, "error": "SMS not available on this device"},
+            status=200,
+        )
+        result = json.loads(android_send_sms("+1234567890", "test"))
+        assert result["success"] is False
+        assert "not available" in result["error"]
+
+    @responses.activate
+    def test_call_unavailable(self, bridge_url):
+        responses.add(
+            responses.POST,
+            f"{bridge_url}/call",
+            json={"success": False, "error": "Phone calls not available on this device"},
+            status=200,
+        )
+        result = json.loads(android_call("+1234567890"))
+        assert result["success"] is False
+        assert "not available" in result["error"]
+
+    @responses.activate
+    def test_contacts_unavailable(self, bridge_url):
+        responses.add(
+            responses.GET,
+            f"{bridge_url}/contacts",
+            json={"success": False, "error": "Contacts not available on this device"},
+            status=200,
+        )
+        result = json.loads(android_search_contacts("John"))
+        assert result["success"] is False
+        assert "not available" in result["error"]
