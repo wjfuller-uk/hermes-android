@@ -910,6 +910,36 @@ class TestSearchContacts:
         result = json.loads(android_search_contacts("test"))
         assert "error" in result
 
+    @responses.activate
+    def test_search_contacts_special_chars_url_encoded(self, bridge_url):
+        """Query strings with special chars (& ? +) must be URL-encoded."""
+        responses.add(
+            responses.GET,
+            f"{bridge_url}/contacts",
+            json={"success": True, "data": {"contacts": [], "count": 0}},
+        )
+        # The ampersand, plus, and space must NOT break the URL
+        result = json.loads(android_search_contacts("Tom & Jerry+Smith"))
+        assert result["success"] is True
+        # Verify the actual request URL has the query properly encoded
+        assert len(responses.calls) == 1
+        request_url = responses.calls[0].request.url
+        assert "query=" in request_url
+        # The raw '&' in the name must be encoded so it doesn't create a new param
+        assert "Tom%20%26%20Jerry%2BSmith" in request_url or "Tom+%26+Jerry%2BSmith" in request_url
+
+    @responses.activate
+    def test_search_contacts_unicode_url_encoded(self, bridge_url):
+        """Unicode query strings must be properly encoded."""
+        responses.add(
+            responses.GET,
+            f"{bridge_url}/contacts",
+            json={"success": True, "data": {"contacts": [], "count": 0}},
+        )
+        result = json.loads(android_search_contacts("José García"))
+        assert result["success"] is True
+        assert len(responses.calls) == 1
+
 
 class TestSendIntent:
     @responses.activate

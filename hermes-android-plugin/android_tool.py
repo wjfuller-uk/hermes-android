@@ -14,6 +14,7 @@ import os
 import time
 import requests
 from typing import Optional
+from urllib.parse import quote
 
 # ── Config ────────────────────────────────────────────────────────────────────
 #
@@ -643,7 +644,7 @@ def android_search_contacts(query: str, limit: int = 20) -> str:
     Useful for finding numbers to call or send SMS to.
     """
     try:
-        data = _get(f"/contacts?query={query}&limit={limit}")
+        data = _get(f"/contacts?query={quote(query)}&limit={limit}")
         return json.dumps(data)
     except Exception as e:
         return json.dumps({"error": str(e)})
