@@ -14,8 +14,10 @@ import java.security.SecureRandom
  * Security:
  *  - Uses java.security.SecureRandom (CSPRNG) instead of kotlin.random.Random
  *    (which is a non-cryptographic PRNG and can be predicted from a few outputs).
- *  - Token comparison uses MessageDigest.isEqual for constant-time equality
- *    to mitigate timing side-channel attacks.
+ *  - Token comparison pads both inputs to a fixed length before using
+ *    MessageDigest.isEqual, ensuring constant-time behaviour even when
+ *    inputs differ in length (isEqual itself short-circuits on unequal
+ *    lengths). The final length check happens after the comparison completes.
  */
 object PairingManager {
 
@@ -59,8 +61,9 @@ object PairingManager {
      * Validate an incoming request's Authorization header.
      * Expected format: "Bearer <code>"
      *
-     * Uses MessageDigest.isEqual for constant-time comparison to avoid leaking
-     * the pairing code through response-time side channels.
+     * Uses fixed-length padding + MessageDigest.isEqual for constant-time
+     * comparison. isEqual short-circuits on unequal lengths, so we pad both
+     * arrays to the same size first, then check length after comparison.
      */
     fun validateToken(authHeader: String?): Boolean {
         if (authHeader == null) return false
@@ -69,7 +72,7 @@ object PairingManager {
         if (expected.isEmpty()) return false
         val a = token.toByteArray(Charsets.UTF_8)
         val b = expected.toByteArray(Charsets.UTF_8)
-        if (a.size != b.size) return false
-        return MessageDigest.isEqual(a, b)
+        val padLen = maxOf(a.size, b.size, 256)
+        return MessageDigest.isEqual(a.copyOf(padLen), b.copyOf(padLen)) && a.size == b.size
     }
 }
