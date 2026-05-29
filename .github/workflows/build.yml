@@ -47,12 +47,16 @@ jobs:
         working-directory: hermes-android-bridge
         run: ./gradlew assembleDebug
 
+      # Only needed for PR builds — pushes to the default branch publish
+      # the APK to the latest-build release below, so a per-push artifact
+      # is redundant and just accumulates storage.
       - name: Upload APK artifact
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: hermes-bridge-debug
+          name: hermes-bridge-debug-pr${{ github.event.pull_request.number }}
           path: hermes-android-bridge/app/build/outputs/apk/debug/*.apk
-          retention-days: 30
+          retention-days: 7
 
       - name: Upload APK to latest release
         if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name == 'push'
