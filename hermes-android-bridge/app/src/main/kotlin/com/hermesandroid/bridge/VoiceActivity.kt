@@ -67,9 +67,10 @@ class VoiceActivity : ComponentActivity() {
                     // Parse cards from relay response
                     try {
                         val gson = com.google.gson.Gson()
-                        val cardsArray = gson.fromJson(cardsJson, Array<Map<String, Any?>>::class.java)
-                        if (cardsArray != null && cardsArray.isNotEmpty()) {
-                            val cards = cardsArray.mapNotNull { cardMap ->
+                        val listType = object : com.google.gson.reflect.TypeToken<List<Map<String, Any?>>>() {}.type
+                        val cardsList: List<Map<String, Any?>> = gson.fromJson(cardsJson, listType)
+                        if (cardsList.isNotEmpty()) {
+                            val cards = cardsList.mapNotNull { cardMap ->
                                 val type = cardMap["type"] as? String ?: return@mapNotNull null
                                 CardData(type = type, data = cardMap["data"])
                             }

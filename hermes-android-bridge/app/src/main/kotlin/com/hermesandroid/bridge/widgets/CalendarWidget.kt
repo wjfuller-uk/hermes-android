@@ -40,38 +40,20 @@ data class CalendarData(
     val dateRange: String? = null  // e.g. "May 31 – Jun 6"
 )
 
-// ── Widget definition ───────────────────────────────────────────────────────
+// ── Composable card (registered in RegisterWidgets.kt) ────────────────────
 
-val calendarWidget = WidgetDefinition(
-    id = "google-calendar",
-    name = "Google Calendar",
-    matcher = { event ->
-        if (event.tool == "google_calendar" || event.tool == "calendar") {
-            parseCalendarOutput(event.output)
-        } else null
-    },
-    card = { data, event ->
-        CalendarCard(data = data as CalendarData, onEventClick = {})
-    },
-    notificationBadge = true
-)
-
-private fun parseCalendarOutput(output: Any?): CalendarData? {
-    // Accept either a Map with "events" key, or a List of events
-    return when (output) {
+/** Parse raw card data (from relay JSON) into CalendarData */
+fun parseCalendarData(data: Any?): CalendarData? {
+    return when (data) {
         is Map<*, *> -> {
             @Suppress("UNCHECKED_CAST")
-            val raw = output["events"] as? List<Map<String, Any?>>
-                ?: output["items"] as? List<Map<String, Any?>>
+            val raw = data["events"] as? List<Map<String, Any?>>
+                ?: data["items"] as? List<Map<String, Any?>>
                 ?: return null
             CalendarData(
                 events = raw.mapNotNull { parseEvent(it) },
-                dateRange = output["dateRange"] as? String
+                dateRange = data["dateRange"] as? String
             )
-        }
-        is List<*> -> {
-            val events = output.filterIsInstance<Map<String, Any?>>().mapNotNull { parseEvent(it) }
-            CalendarData(events = events)
         }
         else -> null
     }
