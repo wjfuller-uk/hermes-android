@@ -33,7 +33,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="v0.2.0"
+            android:text="v0.5.0"
             android:textSize="12sp"
             android:textColor="#666666"
             android:fontFamily="monospace" />
@@ -422,8 +422,21 @@
         android:textColor="#FFFFFF"
         android:fontFamily="monospace"
         android:background="@drawable/bg_button_orange"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="8dp"
         android:visibility="gone"
+        android:textAllCaps="false" />
+
+    <Button
+        android:id="@+id/btnLogs"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="LOGS"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:fontFamily="monospace"
+        android:background="@drawable/bg_button_disconnect"
+        android:layout_marginBottom="16dp"
         android:textAllCaps="false" />
 
     <TextView

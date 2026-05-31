@@ -22,15 +22,25 @@ class VoiceActivity : ComponentActivity() {
             // Observe connection status
             DisposableEffect(Unit) {
                 val originalCallback = RelayClient.onStatusChanged
+                val originalVoiceCallback = RelayClient.onVoiceStateChanged
                 RelayClient.onStatusChanged = { connected, _ ->
                     viewModel.updateConnection(connected)
                     if (!connected) {
-                        // Go back to setup if disconnected
                         finish()
                     }
                 }
+                RelayClient.onVoiceStateChanged = { state ->
+                    val voiceState = when (state) {
+                        "listening" -> VoiceState.LISTENING
+                        "processing" -> VoiceState.PROCESSING
+                        "speaking" -> VoiceState.SPEAKING
+                        else -> VoiceState.IDLE
+                    }
+                    viewModel.updateState(voiceState)
+                }
                 onDispose {
                     RelayClient.onStatusChanged = originalCallback
+                    RelayClient.onVoiceStateChanged = originalVoiceCallback
                 }
             }
 

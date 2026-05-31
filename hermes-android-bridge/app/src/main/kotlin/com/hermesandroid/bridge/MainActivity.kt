@@ -19,6 +19,8 @@ import com.hermesandroid.bridge.client.RelayClient
 import com.hermesandroid.bridge.media.ScreenRecorder
 import com.hermesandroid.bridge.overlay.StatusOverlay
 import com.hermesandroid.bridge.service.BridgeAccessibilityService
+import com.hermesandroid.bridge.ui.LogActivity
+import com.hermesandroid.bridge.util.AppLogger
 import java.net.NetworkInterface
 
 class MainActivity : Activity() {
@@ -45,6 +47,7 @@ class MainActivity : Activity() {
     private lateinit var btnConnect: Button
     private lateinit var btnDisconnect: Button
     private lateinit var btnVoice: Button
+    private lateinit var btnLogs: Button
     private lateinit var tvAddress: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +72,7 @@ class MainActivity : Activity() {
         btnConnect = findViewById(R.id.btnConnect)
         btnDisconnect = findViewById(R.id.btnDisconnect)
         btnVoice = findViewById(R.id.btnVoice)
+        btnLogs = findViewById(R.id.btnLogs)
         tvAddress = findViewById(R.id.tvAddress)
 
         setupPairingCode()
@@ -177,6 +181,11 @@ class MainActivity : Activity() {
         }
 
         RelayClient.onStatusChanged = { connected, message ->
+            if (connected) {
+                AppLogger.i("MainActivity", "Relay connected: ${RelayClient.serverUrl}")
+            } else {
+                AppLogger.w("MainActivity", "Relay disconnected: $message")
+            }
             tvRelayStatus.text = message
             tvRelayStatus.setTextColor(
                 if (connected) 0xFF4CAF50.toInt() else 0xFF888888.toInt()
@@ -216,6 +225,11 @@ class MainActivity : Activity() {
 
         btnVoice.setOnClickListener {
             val intent = Intent(this, VoiceActivity::class.java)
+            startActivity(intent)
+        }
+
+        btnLogs.setOnClickListener {
+            val intent = Intent(this, LogActivity::class.java)
             startActivity(intent)
         }
 

@@ -2,7 +2,9 @@ package com.hermesandroid.bridge.client
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import android.util.Log
+import com.hermesandroid.bridge.util.AppLogger
 import com.hermesandroid.bridge.BuildConfig
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -56,6 +58,9 @@ object RelayClient {
     /** Callback for UI updates. Called on main thread. */
     var onStatusChanged: ((connected: Boolean, message: String) -> Unit)? = null
 
+    /** Callback for voice state changes. Called on main thread. */
+    var onVoiceStateChanged: ((state: String) -> Unit)? = null
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -89,7 +94,7 @@ object RelayClient {
         val url = serverUrl
         val code = pairingCode
         if (!url.isNullOrBlank() && !code.isNullOrBlank()) {
-            Log.i(TAG, "Auto-connecting to $url")
+            AppLogger.i(TAG, "Auto-connecting to $url")
             connect(url, code)
         }
     }
@@ -106,14 +111,14 @@ object RelayClient {
             ws.send(okio.ByteString.of(*data))
             true
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to send binary frame: ${e.message}")
+            AppLogger.w(TAG, "Failed to send binary frame: ${e.message}")
             false
         }
     }
 
     private fun doConnect(serverUrl: String, pairingCode: String) {
         val wsUrl = buildWsUrl(serverUrl, pairingCode)
-        Log.i(TAG, "Connecting to ${buildWsUrl(serverUrl, "***")}")
+        AppLogger.i(TAG, "Connecting to ${buildWsUrl(serverUrl, "***")}")
         notifyStatus(false, "Connecting to ${buildWsUrl(serverUrl, "***")} ...")
 
         val request = Request.Builder()
@@ -123,12 +128,12 @@ object RelayClient {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "WebSocket connected to ${buildWsUrl(serverUrl, "***")}")
+                AppLogger.i(TAG, "WebSocket connected to ${buildWsUrl(serverUrl, "***")}")
                 isConnected = true
                 try {
                     BridgeAccessibilityService.instance?.startForeground()
                 } catch (e: SecurityException) {
-                    Log.w(TAG, "Could not promote bridge service to foreground", e)
+                    AppLogger.w(TAG, "Could not promote bridge service to foreground", e)
                 }
                 notifyStatus(true, "Connected to $serverUrl")
             }
@@ -147,12 +152,12 @@ object RelayClient {
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "WebSocket closing: $code $reason")
+                AppLogger.i(TAG, "WebSocket closing: $code $reason")
                 webSocket.close(1000, null)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "WebSocket closed: $code $reason")
+                AppLogger.i(TAG, "WebSocket closed: $code $reason")
                 isConnected = false
                 notifyStatus(false, "Closed: code=$code $reason")
                 scheduleReconnect()
@@ -161,7 +166,7 @@ object RelayClient {
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val httpCode = response?.code ?: 0
                 val errorDetail = "Error: ${t.javaClass.simpleName}: ${t.message} (HTTP $httpCode)"
-                Log.e(TAG, "WebSocket failure: $errorDetail", t)
+                AppLogger.e(TAG, "WebSocket failure: $errorDetail", t)
                 isConnected = false
                 notifyStatus(false, errorDetail)
                 scheduleReconnect()
@@ -180,7 +185,7 @@ object RelayClient {
             var retries = 0
             while (shouldReconnect && !isConnected && retries < MAX_RETRIES) {
                 retries++
-                Log.i(TAG, "Reconnecting in ${backoff}ms... (attempt $retries/$MAX_RETRIES)")
+                AppLogger.i(TAG, "Reconnecting in ${backoff}ms... (attempt $retries/$MAX_RETRIES)")
                 notifyStatus(false, "Reconnecting in ${backoff / 1000}s... (attempt $retries/$MAX_RETRIES)")
                 delay(backoff)
                 if (shouldReconnect && !isConnected) {
@@ -210,8 +215,11 @@ object RelayClient {
             base = "$base:8766"
         }
         val scheme = if (useTls) "wss" else "ws"
-        if (BuildConfig.DEBUG) Log.d(TAG, "Built WebSocket URL: $scheme://$base/ws?token=***")
-        return "$scheme://$base/ws?token=$pairingCode"
+        val deviceId = try { Build.FINGERPRINT } catch (_: Exception) { Build.MODEL }
+        val model = Build.MODEL ?: "unknown"
+        val brand = Build.BRAND ?: "unknown"
+        if (BuildConfig.DEBUG) Log.d(TAG, "Built WebSocket URL: $scheme://$base/ws?token=***&device_id=$deviceId")
+        return "$scheme://$base/ws?token=$pairingCode&device_id=$deviceId&model=$model&brand=$brand"
     }
 
     private suspend fun handleMessage(ws: WebSocket, text: String) {
@@ -223,7 +231,16 @@ object RelayClient {
             val params = json.getAsJsonObject("params") ?: JsonObject()
             val body = json.getAsJsonObject("body") ?: JsonObject()
 
-            if (BuildConfig.DEBUG) Log.d(TAG, "Received command: $method $path (id=$requestId)")
+            if (BuildConfig.DEBUG) AppLogger.d(TAG, "Received command: $method $path (id=$requestId)")
+
+            // Update voice state based on commands
+            val voiceState = when {
+                path.contains("/voice/start") || path.contains("/microphone") -> "listening"
+                path.contains("/voice/stop") -> "idle"
+                path.contains("/speak") || path.contains("/tts") -> "speaking"
+                else -> null
+            }
+            voiceState?.let { notifyVoiceState(it) }
 
             // The relay connection is authenticated at connect time (token in the WS URL),
             // so commands arriving here are already authenticated.
@@ -236,7 +253,7 @@ object RelayClient {
             }
             ws.send(responseJson.toString())
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling message: ${e.message}", e)
+            AppLogger.e(TAG, "Error handling message: ${e.message}", e)
             try {
                 val json = JsonParser.parseString(text).asJsonObject
                 val requestId = json.get("request_id")?.asString ?: ""
@@ -258,7 +275,7 @@ object RelayClient {
         try {
             AudioPlayer.play(bytes.toByteArray())
         } catch (e: Exception) {
-            Log.w(TAG, "Audio playback error: ${e.message}")
+            AppLogger.w(TAG, "Audio playback error: ${e.message}")
         }
     }
 
@@ -267,6 +284,15 @@ object RelayClient {
         try {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 callback(connected, message)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun notifyVoiceState(state: String) {
+        val callback = onVoiceStateChanged ?: return
+        try {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                callback(state)
             }
         } catch (_: Exception) {}
     }

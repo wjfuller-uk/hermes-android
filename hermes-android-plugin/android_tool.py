@@ -51,6 +51,31 @@ from urllib.parse import quote
 # by setting ANDROID_BRIDGE_URL to the phone's IP.
 
 
+_active_device_id: Optional[str] = None
+
+
+def _set_active_device(device_id: Optional[str]) -> None:
+    """Set the active device for all subsequent tool calls."""
+    global _active_device_id
+    _active_device_id = device_id
+
+
+def _device_query() -> str:
+    """Return query string fragment for device routing."""
+    if _active_device_id:
+        return f"?device={_active_device_id}"
+    return ""
+
+
+def _device_query_for(url_path: str) -> str:
+    """Return URL with device routing param appended."""
+    dq = _device_query()
+    if dq:
+        sep = "&" if "?" in url_path else "?"
+        return f"{url_path}{sep}{dq.lstrip('?')}"
+    return url_path
+
+
 def _bridge_url() -> str:
     """URL of the relay (default) or direct phone connection."""
     return os.getenv("ANDROID_BRIDGE_URL", "http://localhost:8766")
@@ -108,7 +133,7 @@ def _extract_response(r: requests.Response) -> dict:
 
 def _post(path: str, payload: dict) -> dict:
     r = requests.post(
-        f"{_bridge_url()}{path}",
+        f"{_bridge_url()}{_device_query_for(path)}",
         json=payload,
         headers=_auth_headers(),
         timeout=_timeout(),
@@ -118,7 +143,7 @@ def _post(path: str, payload: dict) -> dict:
 
 def _get(path: str) -> dict:
     r = requests.get(
-        f"{_bridge_url()}{path}", headers=_auth_headers(), timeout=_timeout()
+        f"{_bridge_url()}{_device_query_for(path)}", headers=_auth_headers(), timeout=_timeout()
     )
     return _extract_response(r)
 
@@ -916,6 +941,27 @@ def android_camera_capture() -> str:
         return json.dumps({"error": str(e)})
 
 
+def android_list_devices() -> str:
+    """List all connected Android devices. Returns device IDs, models, and connection status."""
+    try:
+        data = _get("/devices")
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_select_device(device_id: str) -> str:
+    """Select which connected device to use for subsequent tool calls.
+    Use android_list_devices() to see available device IDs.
+    Pass empty string to reset to auto-select (uses the only connected device).
+    """
+    try:
+        _set_active_device(device_id if device_id else None)
+        return json.dumps({"success": True, "active_device": device_id or "auto"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 def android_shell(command: str, timeout_ms: int = 10000) -> str:
     """
     Run a shell command on the Android device and return stdout/stderr.
@@ -1542,6 +1588,25 @@ _SCHEMAS = {
             "required": ["command"],
         },
     },
+    "android_list_devices": {
+        "name": "android_list_devices",
+        "description": "List all connected Android devices. Returns device IDs, models, brands, and connection status. Use this to see which phones are available before calling android_select_device.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    "android_select_device": {
+        "name": "android_select_device",
+        "description": "Select which connected device to use for subsequent tool calls. Use android_list_devices first to see available device IDs. Pass empty string to reset to auto-select.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "device_id": {
+                    "type": "string",
+                    "description": "The device_id to select, or empty string for auto-select",
+                },
+            },
+            "required": ["device_id"],
+        },
+    },
 }
 
 # ── Tool handlers map ──────────────────────────────────────────────────────────
@@ -1589,6 +1654,8 @@ _HANDLERS = {
     "android_voice_stop": lambda args, **kw: android_voice_stop(),
     "android_camera_capture": lambda args, **kw: android_camera_capture(),
     "android_shell": lambda args, **kw: android_shell(**args),
+    "android_list_devices": lambda args, **kw: android_list_devices(),
+    "android_select_device": lambda args, **kw: android_select_device(**args),
 }
 
 # ── Registry registration ──────────────────────────────────────────────────────

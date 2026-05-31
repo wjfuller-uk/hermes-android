@@ -879,11 +879,15 @@ object ActionExecutor {
             
             val stdout = process.inputStream.bufferedReader().use { it.readText() }
             val stderr = process.errorStream.bufferedReader().use { it.readText() }
-            
-            process.waitFor()
-            
-            val output = "stdout:\n${stdout.trim()}\nstderr:\n${stderr.trim()}\nexit: ${process.exitValue()}"
-            ActionResult(true, output)
+
+            val finished = process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                ActionResult(false, "Shell command timed out after ${timeoutMs}ms")
+            } else {
+                val output = "stdout:\n${stdout.trim()}\nstderr:\n${stderr.trim()}\nexit: ${process.exitValue()}"
+                ActionResult(true, output)
+            }
         } catch (e: SecurityException) {
             ActionResult(false, "Shell execution not permitted: ${e.message}")
         } catch (e: Exception) {
