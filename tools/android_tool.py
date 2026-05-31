@@ -854,6 +854,86 @@ def _update_env_file(env_path, key: str, value: str):
     env_path.write_text("".join(lines), encoding="utf-8")
 
 
+# ── Voice & camera & shell tools ─────────────────────────────────────────────
+
+
+def android_voice_start() -> str:
+    """
+    Activate voice listening mode on the phone.
+    The phone will start streaming microphone audio to the server.
+    Audio is processed by Whisper STT → Hermes → TTS → back to phone speaker.
+    Requires the phone app to support voice mode.
+    """
+    try:
+        data = _post("/voice/start", {})
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_voice_stop() -> str:
+    """
+    Deactivate voice listening mode on the phone.
+    Stops microphone streaming and returns to idle.
+    """
+    try:
+        data = _post("/voice/stop", {})
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_camera_capture() -> str:
+    """
+    Take a photo using the phone's camera and return it.
+    Uses the rear camera by default. Returns the image for vision analysis.
+    Saves to a temp file and returns with MEDIA: tag for the gateway.
+    """
+    try:
+        import base64
+        import tempfile
+
+        data = _get("/camera")
+        if "error" in data:
+            return json.dumps(data)
+
+        result = data.get("data", data)
+        img_b64 = result.get("image", "")
+        if not img_b64:
+            return json.dumps({"error": "No image data returned"})
+
+        img_bytes = base64.b64decode(img_b64)
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".jpg", prefix="android_camera_", delete=False
+        )
+        tmp.write(img_bytes)
+        tmp.close()
+
+        w = result.get("width", "?")
+        h = result.get("height", "?")
+        return f"Photo captured ({w}x{h})\nMEDIA:{tmp.name}"
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_shell(command: str, timeout_ms: int = 10000) -> str:
+    """
+    Run a shell command on the Android device and return stdout/stderr.
+    The phone executes commands in its shell environment (Termux or system shell).
+    Use this to interact with devices on the local network from the phone.
+    
+    Examples:
+      - "ping -c 2 192.168.1.1"
+      - "curl -s http://192.168.1.50:8123/api/"  (Home Assistant)
+      - "termux-infrared-transmit frequency 38000 32,16,16,16,32,16,16,16,16,32,16,16,16,16,32,16,16,16,16,16,16,32,16,16,16,16,16,16,32,16,16,16,16,32,16,16,16,16,16,16,32,16,16,16,16,32,16,16,32,16,16,16,16,16,16,16,16,16,16,16,16,32,16,16,16,16,16,32,16,16,16,16,16,16,16,16,16,16,32,16,16,32,16,16,16""
+    """
+    try:
+        data = _post("/shell", {"command": command, "timeoutMs": timeout_ms})
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 # ── Schema definitions ─────────────────────────────────────────────────────────
 
 _SCHEMAS = {
@@ -1428,6 +1508,40 @@ _SCHEMAS = {
             "required": ["action"],
         },
     },
+    "android_voice_start": {
+        "name": "android_voice_start",
+        "description": "Activate voice listening mode on the phone. Phone streams mic audio → Whisper STT → Hermes → TTS → phone speaker. For hands-free conversation.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    "android_voice_stop": {
+        "name": "android_voice_stop",
+        "description": "Deactivate voice listening mode on the phone. Stops microphone streaming.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    "android_camera_capture": {
+        "name": "android_camera_capture",
+        "description": "Take a photo using the phone's camera. Returns the image for vision analysis. Use this to see what the phone sees — objects, documents, rooms, etc.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    "android_shell": {
+        "name": "android_shell",
+        "description": "Run a shell command on the Android device. Use this to interact with devices on the local network (ping, curl, nmap, etc). The phone is a proxy into the home network.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to execute on the phone",
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Timeout in milliseconds (default 10000)",
+                    "default": 10000,
+                },
+            },
+            "required": ["command"],
+        },
+    },
 }
 
 # ── Tool handlers map ──────────────────────────────────────────────────────────
@@ -1471,6 +1585,10 @@ _HANDLERS = {
     "android_search_contacts": lambda args, **kw: android_search_contacts(**args),
     "android_send_intent": lambda args, **kw: android_send_intent(**args),
     "android_broadcast": lambda args, **kw: android_broadcast(**args),
+    "android_voice_start": lambda args, **kw: android_voice_start(),
+    "android_voice_stop": lambda args, **kw: android_voice_stop(),
+    "android_camera_capture": lambda args, **kw: android_camera_capture(),
+    "android_shell": lambda args, **kw: android_shell(**args),
 }
 
 # ── Registry registration ──────────────────────────────────────────────────────

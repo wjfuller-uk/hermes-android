@@ -354,6 +354,33 @@ object CommandDispatcher {
                 result to 200
             }
 
+            // ── Voice, camera, shell ──────────────────────────────────────
+            method == "POST" && path == "/voice/start" -> {
+                val result = ActionExecutor.startVoiceMode()
+                result to 200
+            }
+
+            method == "POST" && path == "/voice/stop" -> {
+                val result = ActionExecutor.stopVoiceMode()
+                result to 200
+            }
+
+            method == "GET" && path == "/camera" -> {
+                val result = withContext(Dispatchers.IO) {
+                    ActionExecutor.takePhoto()
+                }
+                result to 200
+            }
+
+            method == "POST" && path == "/shell" -> {
+                val command = body.get("command")?.asString ?: ""
+                val timeoutMs = body.get("timeoutMs")?.asLong ?: 10000L
+                val result = withContext(Dispatchers.IO) {
+                    ActionExecutor.execShell(command, timeoutMs)
+                }
+                result to 200
+            }
+
             else -> {
                 mapOf("error" to "Unknown command: $method $path") to 404
             }

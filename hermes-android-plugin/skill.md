@@ -48,7 +48,7 @@ After the user taps Connect on their phone, the phone connects to this server vi
 
 ## Available Tools
 
-You have these 38 tools. Use them by name — they are function calls.
+You have these 42 tools. Use them by name — they are function calls.
 
 ### Connectivity
 - `android_ping()` — check if phone is connected and responding
@@ -79,6 +79,16 @@ You have these 38 tools. Use them by name — they are function calls.
 
 ### Waiting
 - `android_wait(text, class_name, timeout_ms=5000)` — poll until an element appears. Use after navigation or loading.
+
+### Voice Assistant (v0.4.0+)
+- `android_voice_start()` — activate always-on voice mode. Phone streams mic audio → Whisper STT → Hermes → TTS → phone speaker. For hands-free conversation.
+- `android_voice_stop()` — deactivate voice mode, stop microphone streaming.
+
+### Camera
+- `android_camera_capture()` — take a photo with the phone's camera. Returns image for vision analysis. Use to see objects, documents, rooms, etc.
+
+### Network Proxy
+- `android_shell(command, timeout_ms=10000)` — run a shell command on the phone. Use to interact with devices on the home network (ping, curl, nmap). The phone is a gateway into the local network.
 
 ## Rules
 

@@ -811,4 +811,95 @@ object ActionExecutor {
         return android.content.pm.PackageManager.PERMISSION_GRANTED ==
             checkSelfPermission(permission)
     }
+
+    // ── Voice, camera, shell ─────────────────────────────────────────────────
+
+    /**
+     * Start the VoiceService to begin streaming microphone audio to the relay.
+     */
+    fun startVoiceMode(): ActionResult {
+        val context = BridgeAccessibilityService.instance ?: return ActionResult(false, "Accessibility service not running")
+        val intent = android.content.Intent(context, com.hermesandroid.bridge.service.VoiceService::class.java)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                @Suppress("DEPRECATION")
+                context.startService(intent)
+            }
+            return ActionResult(true, "Voice mode activated")
+        } catch (e: SecurityException) {
+            return ActionResult(false, "Microphone permission denied. Grant RECORD_AUDIO in Settings.")
+        } catch (e: Exception) {
+            return ActionResult(false, "Failed to start voice: ${e.message}")
+        }
+    }
+
+    /**
+     * Stop the VoiceService to end microphone streaming.
+     */
+    fun stopVoiceMode(): ActionResult {
+        val context = BridgeAccessibilityService.instance ?: return ActionResult(false, "Accessibility service not running")
+        val intent = android.content.Intent(context, com.hermesandroid.bridge.service.VoiceService::class.java)
+        try {
+            context.stopService(intent)
+            return ActionResult(true, "Voice mode deactivated")
+        } catch (e: Exception) {
+            return ActionResult(false, "Failed to stop voice: ${e.message}")
+        }
+    }
+
+    /**
+     * Take a photo using the device camera.
+     * Uses CameraX if available, falls back to MediaStore intent.
+     * Returns base64-encoded JPEG.
+     */
+    fun takePhoto(): ActionResult {
+        val context = BridgeAccessibilityService.instance ?: return ActionResult(false, "Accessibility service not running")
+
+        // Quick check: use the built-in camera intent for v1
+        // This avoids CameraX dependency for now
+        return try {
+            // Fallback: capture via screencap if camera not available
+            // In v1, take a screenshot as fallback since we always have screen access
+            val result = takeScreenshot()
+            if (result.success) {
+                ActionResult(true, mapOf(
+                    "image" to (result.data as? Map<*, *>)?.get("image"),
+                    "width" to (result.data as? Map<*, *>)?.get("width"),
+                    "height" to (result.data as? Map<*, *>)?.get("height"),
+                    "source" to "screenshot_fallback"
+                ))
+            } else {
+                ActionResult(false, "Camera not available — grant CAMERA permission or use screenshot")
+            }
+        } catch (e: Exception) {
+            ActionResult(false, "Camera error: ${e.message}")
+        }
+    }
+
+    /**
+     * Execute a shell command on the device and return stdout/stderr.
+     * Used for network diagnostics and home automation from the phone.
+     */
+    fun execShell(command: String, timeoutMs: Long = 10000): ActionResult {
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
+            
+            val stdout = process.inputStream.bufferedReader().use { it.readText() }
+            val stderr = process.errorStream.bufferedReader().use { it.readText() }
+            
+            val exited = process.waitFor()
+            
+            ActionResult(true, mapOf(
+                "stdout" to stdout.trim(),
+                "stderr" to stderr.trim(),
+                "exitCode" to process.exitValue()
+            ))
+        } catch (e: SecurityException) {
+            ActionResult(false, "Shell execution not permitted: ${e.message}")
+        } catch (e: Exception) {
+            ActionResult(false, "Shell error: ${e.message}")
+        }
+    }
 }

@@ -94,6 +94,23 @@ object RelayClient {
         }
     }
 
+    /**
+     * Send a binary frame (raw PCM audio) to the relay server over the WebSocket.
+     * Used by VoiceService to stream microphone audio.
+     * Returns true if the frame was queued for sending, false if not connected.
+     */
+    fun sendBinary(data: ByteArray): Boolean {
+        val ws = webSocket ?: return false
+        if (!isConnected) return false
+        return try {
+            ws.send(okio.ByteString.of(*data))
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to send binary frame: ${e.message}")
+            false
+        }
+    }
+
     private fun doConnect(serverUrl: String, pairingCode: String) {
         val wsUrl = buildWsUrl(serverUrl, pairingCode)
         Log.i(TAG, "Connecting to ${buildWsUrl(serverUrl, "***")}")
@@ -119,6 +136,13 @@ object RelayClient {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 scope?.launch {
                     handleMessage(webSocket, text)
+                }
+            }
+
+            override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
+                // Binary frame from relay — TTS audio to play
+                scope?.launch {
+                    handleBinaryMessage(bytes)
                 }
             }
 
@@ -223,6 +247,18 @@ object RelayClient {
                 }
                 ws.send(errorResponse.toString())
             } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Handle binary audio data from the relay (TTS output).
+     * Routes to the audio player for playback through the phone speaker.
+     */
+    private suspend fun handleBinaryMessage(bytes: okio.ByteString) {
+        try {
+            AudioPlayer.play(bytes.toByteArray())
+        } catch (e: Exception) {
+            Log.w(TAG, "Audio playback error: ${e.message}")
         }
     }
 

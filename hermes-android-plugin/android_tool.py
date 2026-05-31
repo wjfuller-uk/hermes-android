@@ -1,12 +1,36 @@
 """
-hermes-android tool — 38 android_* tool handlers + schemas.
+hermes-android tool — registers android_* tools into hermes-agent registry.
 
-NOTE: This file must be kept in sync with tools/android_tool.py.
+NOTE: This file must be kept in sync with hermes-android-plugin/android_tool.py.
       The only difference is the import path for android_relay (see android_setup).
       Apply any bug fixes or feature changes to BOTH files.
 
-Used by the plugin's __init__.py to register tools into hermes-agent
-via ctx.register_tool().
+Tools registered:
+  - android_ping            check bridge connectivity
+  - android_read_screen     get accessibility tree of current screen
+  - android_tap             tap at coordinates or by node id
+  - android_tap_text        tap element by visible text
+  - android_type            type text into focused field
+  - android_swipe           swipe gesture
+  - android_open_app        launch app by package name
+  - android_press_key       press hardware/software key (back, home, recents)
+  - android_screenshot      capture screenshot as base64
+  - android_scroll          scroll in direction
+  - android_wait            wait for element to appear
+  - android_get_apps        list installed apps
+  - android_current_app     get foreground app package name
+  - android_setup           configure bridge URL and pairing code
+  - android_clipboard_read  read phone clipboard
+  - android_clipboard_write write text to phone clipboard
+  - android_notifications   read recent phone notifications
+  - android_long_press      long press for context menus, text selection
+  - android_drag            drag from one point to another
+  - android_describe_node   get detailed properties of a UI node
+  - android_screen_hash     get lightweight hash for change detection
+  - android_macro            execute a sequence of tool calls in order
+  - android_location         get GPS location
+  - android_send_sms         send SMS directly
+  - android_call             initiate phone call
 """
 
 import json
@@ -580,6 +604,18 @@ def android_screen_record(duration_ms: int = 5000) -> str:
         return json.dumps({"error": str(e)})
 
 
+def android_read_widgets() -> str:
+    """
+    Read home screen widgets (weather, calendar, tasks, etc.) without
+    opening apps. Goes to home screen first, then reads widget content.
+    """
+    try:
+        data = _get("/widgets")
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 def android_find_nodes(
     text: str = None, class_name: str = None, clickable: bool = None, limit: int = 20
 ) -> str:
@@ -623,18 +659,6 @@ def android_pinch(x: int, y: int, scale: float = 1.5, duration: int = 300) -> st
     """
     try:
         data = _post("/pinch", {"x": x, "y": y, "scale": scale, "duration": duration})
-        return json.dumps(data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-def android_read_widgets() -> str:
-    """
-    Read home screen widgets (weather, calendar, tasks, etc.) without
-    opening apps. Goes to home screen first, then reads widget content.
-    """
-    try:
-        data = _get("/widgets")
         return json.dumps(data)
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -763,7 +787,10 @@ def android_setup(pairing_code: str) -> str:
 
         # Start the relay server
         try:
-            from .android_relay import start_relay, is_phone_connected
+            from tools.android_relay import (
+                start_relay,
+                is_phone_connected,
+            )
 
             start_relay(pairing_code=pairing_code, port=port)
 
@@ -801,7 +828,7 @@ def android_setup(pairing_code: str) -> str:
             return json.dumps(
                 {
                     "status": "error",
-                    "message": "android_relay module not found. Make sure hermes-android plugin is installed.",
+                    "message": "android_relay module not found. Make sure hermes-android is installed.",
                 }
             )
 
@@ -825,6 +852,86 @@ def _update_env_file(env_path, key: str, value: str):
             lines[-1] += "\n"
         lines.append(f"{key}={value}\n")
     env_path.write_text("".join(lines), encoding="utf-8")
+
+
+# ── Voice & camera & shell tools ─────────────────────────────────────────────
+
+
+def android_voice_start() -> str:
+    """
+    Activate voice listening mode on the phone.
+    The phone will start streaming microphone audio to the server.
+    Audio is processed by Whisper STT → Hermes → TTS → back to phone speaker.
+    Requires the phone app to support voice mode.
+    """
+    try:
+        data = _post("/voice/start", {})
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_voice_stop() -> str:
+    """
+    Deactivate voice listening mode on the phone.
+    Stops microphone streaming and returns to idle.
+    """
+    try:
+        data = _post("/voice/stop", {})
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_camera_capture() -> str:
+    """
+    Take a photo using the phone's camera and return it.
+    Uses the rear camera by default. Returns the image for vision analysis.
+    Saves to a temp file and returns with MEDIA: tag for the gateway.
+    """
+    try:
+        import base64
+        import tempfile
+
+        data = _get("/camera")
+        if "error" in data:
+            return json.dumps(data)
+
+        result = data.get("data", data)
+        img_b64 = result.get("image", "")
+        if not img_b64:
+            return json.dumps({"error": "No image data returned"})
+
+        img_bytes = base64.b64decode(img_b64)
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".jpg", prefix="android_camera_", delete=False
+        )
+        tmp.write(img_bytes)
+        tmp.close()
+
+        w = result.get("width", "?")
+        h = result.get("height", "?")
+        return f"Photo captured ({w}x{h})\nMEDIA:{tmp.name}"
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_shell(command: str, timeout_ms: int = 10000) -> str:
+    """
+    Run a shell command on the Android device and return stdout/stderr.
+    The phone executes commands in its shell environment (Termux or system shell).
+    Use this to interact with devices on the local network from the phone.
+    
+    Examples:
+      - "ping -c 2 192.168.1.1"
+      - "curl -s http://192.168.1.50:8123/api/"  (Home Assistant)
+      - "termux-infrared-transmit frequency 38000 32,16,16,16,32,16,16,16,16,32,16,16,16,16,32,16,16,16,16,16,16,32,16,16,16,16,16,16,32,16,16,16,16,32,16,16,16,16,16,16,32,16,16,16,16,32,16,16,32,16,16,16,16,16,16,16,16,16,16,16,16,32,16,16,16,16,16,32,16,16,16,16,16,16,16,16,16,16,32,16,16,32,16,16,16""
+    """
+    try:
+        data = _post("/shell", {"command": command, "timeoutMs": timeout_ms})
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 # ── Schema definitions ─────────────────────────────────────────────────────────
@@ -1401,6 +1508,40 @@ _SCHEMAS = {
             "required": ["action"],
         },
     },
+    "android_voice_start": {
+        "name": "android_voice_start",
+        "description": "Activate voice listening mode on the phone. Phone streams mic audio → Whisper STT → Hermes → TTS → phone speaker. For hands-free conversation.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    "android_voice_stop": {
+        "name": "android_voice_stop",
+        "description": "Deactivate voice listening mode on the phone. Stops microphone streaming.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    "android_camera_capture": {
+        "name": "android_camera_capture",
+        "description": "Take a photo using the phone's camera. Returns the image for vision analysis. Use this to see what the phone sees — objects, documents, rooms, etc.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    "android_shell": {
+        "name": "android_shell",
+        "description": "Run a shell command on the Android device. Use this to interact with devices on the local network (ping, curl, nmap, etc). The phone is a proxy into the home network.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to execute on the phone",
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Timeout in milliseconds (default 10000)",
+                    "default": 10000,
+                },
+            },
+            "required": ["command"],
+        },
+    },
 }
 
 # ── Tool handlers map ──────────────────────────────────────────────────────────
@@ -1444,4 +1585,29 @@ _HANDLERS = {
     "android_search_contacts": lambda args, **kw: android_search_contacts(**args),
     "android_send_intent": lambda args, **kw: android_send_intent(**args),
     "android_broadcast": lambda args, **kw: android_broadcast(**args),
+    "android_voice_start": lambda args, **kw: android_voice_start(),
+    "android_voice_stop": lambda args, **kw: android_voice_stop(),
+    "android_camera_capture": lambda args, **kw: android_camera_capture(),
+    "android_shell": lambda args, **kw: android_shell(**args),
 }
+
+# ── Registry registration ──────────────────────────────────────────────────────
+
+try:
+    from tools.registry import registry
+
+    for tool_name, schema in _SCHEMAS.items():
+        registry.register(
+            name=tool_name,
+            toolset="android",
+            schema=schema,
+            handler=_HANDLERS[tool_name],
+            # android_setup must work without a bridge connection (it creates the connection)
+            check_fn=(lambda: True)
+            if tool_name == "android_setup"
+            else _check_requirements,
+            requires_env=[],  # ANDROID_BRIDGE_URL has a default
+        )
+except ImportError:
+    # Running outside hermes-agent context (e.g. tests)
+    pass

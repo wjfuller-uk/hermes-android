@@ -36,6 +36,8 @@ from typing import Optional
 import aiohttp
 from aiohttp import web
 
+from . import android_voice
+
 logger = logging.getLogger("android_relay")
 
 # ── Module-level state ────────────────────────────────────────────────────────
@@ -70,6 +72,10 @@ class _RelayState:
 
         # Shutdown event
         self.shutdown_event: Optional[asyncio.Event] = None
+
+        # Voice pipeline (lazily initialized)
+        self.voice_pipeline: Optional["android_voice.VoicePipeline"] = None
+        self.voice_session: Optional["android_voice.VoiceSession"] = None
 
 
 # ── Public API (called from sync code) ────────────────────────────────────────
@@ -236,6 +242,11 @@ async def _serve(state: _RelayState, ready: threading.Event) -> None:
         "/stop_speaking": "POST",
         "/screen_record": "POST",
         "/events/stream": "POST",
+        # Voice & camera & shell
+        "/voice/start":   "POST",
+        "/voice/stop":    "POST",
+        "/camera":        "GET",
+        "/shell":         "POST",
         # READ + WRITE
         "/clipboard":     "BOTH",
     }
@@ -394,6 +405,8 @@ async def _handle_ws(request: web.Request, state: _RelayState) -> web.WebSocketR
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 await _on_phone_message(state, msg.data)
+            elif msg.type == aiohttp.WSMsgType.BINARY:
+                await _on_phone_binary(state, msg.data)
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 logger.error("Phone WS error: %s", ws.exception())
                 break
@@ -427,6 +440,22 @@ async def _on_phone_message(state: _RelayState, raw: str) -> None:
 
     if not future.done():
         future.set_result(data)
+
+
+async def _on_phone_binary(state: _RelayState, data: bytes) -> None:
+    """Route binary audio data from phone to the voice pipeline."""
+    if state.voice_session is None or state.voice_session.state == android_voice.VoiceState.IDLE:
+        # Voice mode not active — ignore binary audio
+        return
+
+    # Lazy-init the pipeline
+    if state.voice_pipeline is None:
+        state.voice_pipeline = android_voice.get_pipeline()
+
+    try:
+        await state.voice_pipeline.feed_audio(state.voice_session, data)
+    except Exception:
+        logger.exception("Voice pipeline error processing audio frame")
 
 
 async def _cleanup_phone(state: _RelayState, reason: str = "") -> None:
@@ -481,6 +510,12 @@ async def _handle_http(
             request.method, path, remote_ip, _mask_token(token),
         )
         return web.json_response({"error": "Unauthorized"}, status=401)
+
+    # ── Voice control routes (handled locally, not forwarded) ─────────────────
+    if path == "/voice/start":
+        return await _handle_voice_start(state)
+    if path == "/voice/stop":
+        return await _handle_voice_stop(state)
 
     # ── Phone connectivity check ────────────────────────────────────────────
     async with state.phone_ws_lock:
@@ -553,3 +588,38 @@ async def _handle_http(
     status = response_data.get("status", 200)
     result = response_data.get("result", {})
     return web.json_response(result, status=status)
+
+
+# ── Voice control handlers ────────────────────────────────────────────────────
+
+
+async def _handle_voice_start(state: _RelayState) -> web.Response:
+    """Activate voice listening mode. Audio from phone will be piped to STT."""
+    async with state.phone_ws_lock:
+        ws = state.phone_ws
+        if ws is None or ws.closed:
+            return web.json_response(
+                {"error": "No phone connected"}, status=503
+            )
+
+    # Create voice session wired to the phone WS
+    async def send_binary(data: bytes) -> None:
+        if ws and not ws.closed:
+            await ws.send_bytes(data)
+
+    pipeline = android_voice.get_pipeline()
+    state.voice_session = pipeline.create_session(send_binary)
+
+    logger.info("Voice mode activated")
+    return web.json_response({"status": "ok", "voice_active": True})
+
+
+async def _handle_voice_stop(state: _RelayState) -> web.Response:
+    """Deactivate voice listening mode."""
+    if state.voice_session is not None:
+        pipeline = android_voice.get_pipeline()
+        await pipeline.force_stop(state.voice_session)
+        state.voice_session = None
+
+    logger.info("Voice mode deactivated")
+    return web.json_response({"status": "ok", "voice_active": False})
