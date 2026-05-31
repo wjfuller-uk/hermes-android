@@ -45,7 +45,8 @@ enum class Status { OK, WARNING, ERROR, INFO }
 
 @Composable
 fun DiagnosticsScreen(
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    onOpenLogs: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val diagnostics = remember { collectDiagnostics(context) }
@@ -61,18 +62,21 @@ fun DiagnosticsScreen(
                     .fillMaxWidth()
                     .background(Color(0xFF161B22))
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 TextButton(onClick = onBack) {
                     Text("← Back", color = Color(0xFF58A6FF))
                 }
-                Spacer(Modifier.width(16.dp))
                 Text(
                     "Diagnostics",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
+                TextButton(onClick = onOpenLogs) {
+                    Text("📋 Logs", color = Color(0xFF58A6FF), fontSize = 13.sp)
+                }
             }
 
             // Diagnostic items grouped by category

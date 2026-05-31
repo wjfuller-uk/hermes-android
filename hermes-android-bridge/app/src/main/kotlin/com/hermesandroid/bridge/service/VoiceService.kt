@@ -117,7 +117,16 @@ class VoiceService : Service() {
     }
 
     private fun stopListening() {
+        val wasRunning = isRunning
         isRunning = false
+        // Tell relay to stop voice pipeline (process buffered audio if PCM)
+        if (wasRunning) {
+            try {
+                if (RelayClient.isConnected) {
+                    RelayClient.sendCommand("POST", "/voice/stop")
+                }
+            } catch (_: Exception) { }
+        }
         try {
             speechRecognizer?.stopListening()
             speechRecognizer?.destroy()
@@ -175,6 +184,17 @@ class VoiceService : Service() {
             }
             audioRecord?.startRecording()
             isRunning = true
+
+            // Auto-stop after 10 seconds — trigger relay processing
+            scope.launch {
+                delay(10_000)
+                if (isRunning) {
+                    AppLogger.i(TAG, "PCM auto-stop after 10s — triggering relay processing")
+                    RelayClient.sendCommand("POST", "/voice/stop")
+                    delay(200) // let the command arrive before stopping
+                    stopSelf()
+                }
+            }
 
             captureJob = scope.launch {
                 val buffer = ByteArray(FRAME_BYTES)
