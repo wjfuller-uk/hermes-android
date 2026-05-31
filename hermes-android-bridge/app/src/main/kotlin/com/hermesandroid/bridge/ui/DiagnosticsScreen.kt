@@ -165,31 +165,45 @@ fun collectDiagnostics(context: Context): List<DiagnosticItem> {
     items.add(DiagnosticItem("Device", "Model", "${Build.BRAND} ${Build.MODEL}"))
     items.add(DiagnosticItem("Device", "Android", "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})"))
     items.add(DiagnosticItem("Device", "Hardware", Build.HARDWARE))
-    items.add(DiagnosticItem("Device", "Serial", Build.SERIAL ?: "unknown"))
+    try {
+        items.add(DiagnosticItem("Device", "Serial", Build.SERIAL?.take(8) ?: "unknown"))
+    } catch (e: SecurityException) {
+        items.add(DiagnosticItem("Device", "Serial", "permission denied", Status.WARNING))
+    }
 
     // ── Battery ──
-    val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
-    val batteryLevel = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
-    val isCharging = bm?.isCharging ?: false
-    items.add(DiagnosticItem("Battery", "Level", "${batteryLevel}%",
-        if (batteryLevel > 20) Status.OK else Status.WARNING))
-    items.add(DiagnosticItem("Battery", "Charging", if (isCharging) "Yes" else "No",
-        if (isCharging) Status.OK else Status.INFO))
+    try {
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val batteryLevel = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        val isCharging = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            bm?.isCharging ?: false
+        } else false
+        items.add(DiagnosticItem("Battery", "Level", "${batteryLevel}%",
+            if (batteryLevel > 20) Status.OK else Status.WARNING))
+        items.add(DiagnosticItem("Battery", "Charging", if (isCharging) "Yes" else "No",
+            if (isCharging) Status.OK else Status.INFO))
+    } catch (e: Exception) {
+        items.add(DiagnosticItem("Battery", "Error", e.message ?: "unknown", Status.ERROR))
+    }
 
     // ── Network ──
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-    val network = cm?.activeNetwork
-    val caps = network?.let { cm.getNetworkCapabilities(it) }
-    val isConnected = caps != null
-    val transport = when {
-        caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "WiFi"
-        caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "Cellular"
-        caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> "VPN"
-        else -> "None"
+    try {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val network = cm?.activeNetwork
+        val caps = network?.let { cm.getNetworkCapabilities(it) }
+        val isConnected = caps != null
+        val transport = when {
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "WiFi"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "Cellular"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> "VPN"
+            else -> "None"
+        }
+        items.add(DiagnosticItem("Network", "Connected", if (isConnected) "Yes" else "No",
+            if (isConnected) Status.OK else Status.ERROR))
+        items.add(DiagnosticItem("Network", "Transport", transport))
+    } catch (e: Exception) {
+        items.add(DiagnosticItem("Network", "Error", e.message ?: "unknown", Status.ERROR))
     }
-    items.add(DiagnosticItem("Network", "Connected", if (isConnected) "Yes" else "No",
-        if (isConnected) Status.OK else Status.ERROR))
-    items.add(DiagnosticItem("Network", "Transport", transport))
 
     // ── Tailscale ──
     val tailscaleIps = try {
@@ -208,73 +222,53 @@ fun collectDiagnostics(context: Context): List<DiagnosticItem> {
     items.add(DiagnosticItem("Connection", "Auth", "auto (Tailscale)"))
 
     // ── Permissions ──
-    val permissions = mapOf(
-        "RECORD_AUDIO" to Manifest.permission.RECORD_AUDIO,
-        "CAMERA" to Manifest.permission.CAMERA,
-        "READ_CONTACTS" to Manifest.permission.READ_CONTACTS,
-        "READ_SMS" to Manifest.permission.READ_SMS,
-        "ACCESS_FINE_LOCATION" to Manifest.permission.ACCESS_FINE_LOCATION,
-        "READ_PHONE_STATE" to Manifest.permission.READ_PHONE_STATE,
-        "POST_NOTIFICATIONS" to Manifest.permission.POST_NOTIFICATIONS,
-        "WRITE_EXTERNAL_STORAGE" to Manifest.permission.WRITE_EXTERNAL_STORAGE,
-        "READ_EXTERNAL_STORAGE" to Manifest.permission.READ_EXTERNAL_STORAGE,
-    )
-    permissions.forEach { (name, perm) ->
-        val granted = ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
-        items.add(DiagnosticItem("Permissions", name, if (granted) "Granted" else "Denied",
-            if (granted) Status.OK else Status.WARNING))
+    try {
+        val permissions = mapOf(
+            "RECORD_AUDIO" to Manifest.permission.RECORD_AUDIO,
+            "CAMERA" to Manifest.permission.CAMERA,
+            "READ_CONTACTS" to Manifest.permission.READ_CONTACTS,
+            "ACCESS_FINE_LOCATION" to Manifest.permission.ACCESS_FINE_LOCATION,
+            "POST_NOTIFICATIONS" to Manifest.permission.POST_NOTIFICATIONS,
+        )
+        permissions.forEach { (name, perm) ->
+            val granted = ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
+            items.add(DiagnosticItem("Permissions", name, if (granted) "Granted" else "Denied",
+                if (granted) Status.OK else Status.WARNING))
+        }
+    } catch (e: Exception) {
+        items.add(DiagnosticItem("Permissions", "Error", e.message ?: "unknown", Status.ERROR))
     }
 
     // ── Audio ──
-    val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-    val micAvailable = am?.let {
-        it.getDevices(AudioManager.GET_DEVICES_INPUTS).isNotEmpty()
-    } ?: false
-    val micMuted = am?.isMicrophoneMute ?: false
-    val streamVol = am?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: -1
-    val maxVol = am?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: -1
-    items.add(DiagnosticItem("Audio", "Microphone", if (micAvailable) "Available" else "Not found",
-        if (micAvailable) Status.OK else Status.ERROR))
-    items.add(DiagnosticItem("Audio", "Mic Muted", if (micMuted) "Yes" else "No",
-        if (micMuted) Status.ERROR else Status.OK))
-    items.add(DiagnosticItem("Audio", "Speaker Volume", "${streamVol}/${maxVol}"))
+    try {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val streamVol = am?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: -1
+        val maxVol = am?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: -1
+        items.add(DiagnosticItem("Audio", "Speaker Volume", "${streamVol}/${maxVol}"))
+    } catch (e: Exception) {
+        items.add(DiagnosticItem("Audio", "Error", e.message ?: "unknown", Status.ERROR))
+    }
 
     // ── Sensors ──
-    val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-    val sensorList = sm?.getSensorList(Sensor.TYPE_ALL) ?: emptyList()
-    items.add(DiagnosticItem("Sensors", "Total Count", "${sensorList.size}"))
-
-    // Check for important sensors
-    val importantSensors = mapOf(
-        "Accelerometer" to Sensor.TYPE_ACCELEROMETER,
-        "Gyroscope" to Sensor.TYPE_GYROSCOPE,
-        "Proximity" to Sensor.TYPE_PROXIMITY,
-        "Light" to Sensor.TYPE_LIGHT,
-        "Barometer" to Sensor.TYPE_PRESSURE,
-        "Step Counter" to Sensor.TYPE_STEP_COUNTER,
-    )
-    importantSensors.forEach { (name, type) ->
-        val sensor = sm?.getDefaultSensor(type)
-        items.add(DiagnosticItem("Sensors", name, if (sensor != null) "Available" else "Not found",
-            if (sensor != null) Status.OK else Status.INFO))
+    try {
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val sensorList = sm?.getSensorList(Sensor.TYPE_ALL) ?: emptyList()
+        items.add(DiagnosticItem("Sensors", "Total Count", "${sensorList.size}"))
+    } catch (e: Exception) {
+        items.add(DiagnosticItem("Sensors", "Error", e.message ?: "unknown", Status.ERROR))
     }
 
     // ── Power ──
-    val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-    val isInteractive = pm?.isInteractive ?: false
-    val isPowerSave = pm?.isPowerSaveMode ?: false
-    items.add(DiagnosticItem("Power", "Screen On", if (isInteractive) "Yes" else "No"))
-    items.add(DiagnosticItem("Power", "Power Save", if (isPowerSave) "Yes" else "No",
-        if (isPowerSave) Status.WARNING else Status.OK))
-
-    // ── Wake Locks ──
-    val wakeLockHeld = pm?.let { pwr ->
-        try {
-            // This is a rough check - we can't enumerate all wake locks
-            "Check logs for details"
-        } catch (e: Exception) { "Unknown" }
-    } ?: "N/A"
-    items.add(DiagnosticItem("Power", "Wake Locks", wakeLockHeld))
+    try {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val isInteractive = pm?.isInteractive ?: false
+        val isPowerSave = pm?.isPowerSaveMode ?: false
+        items.add(DiagnosticItem("Power", "Screen On", if (isInteractive) "Yes" else "No"))
+        items.add(DiagnosticItem("Power", "Power Save", if (isPowerSave) "Yes" else "No",
+            if (isPowerSave) Status.WARNING else Status.OK))
+    } catch (e: Exception) {
+        items.add(DiagnosticItem("Power", "Error", e.message ?: "unknown", Status.ERROR))
+    }
 
     return items
 }
