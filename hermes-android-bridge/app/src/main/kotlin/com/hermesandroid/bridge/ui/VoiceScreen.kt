@@ -189,8 +189,9 @@ fun buildMarkdown(text: String, baseColor: Color = Text1, baseSize: Int = 15): A
                         append(line.removePrefix("# "))
                     }
                 }
-                // Bullet list
-                line.trimStart().let { trimmed ->
+                // Bullet list and other text
+                else -> {
+                    val trimmed = line.trimStart()
                     when {
                         trimmed.startsWith("- ") -> {
                             append("  •  ")
@@ -204,8 +205,7 @@ fun buildMarkdown(text: String, baseColor: Color = Text1, baseSize: Int = 15): A
                         Regex("""^(\d+)\.\s""").find(trimmed)?.let { match ->
                             append("  ${match.groupValues[1]}.  ")
                             append(parseInline(trimmed.removePrefix(match.value), baseColor, baseSize))
-                        }
-                        else -> {
+                        } ?: run {
                             append(parseInline(trimmed, baseColor, baseSize))
                         }
                     }
@@ -698,7 +698,7 @@ fun ThinkingDots() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 52.dp, vertical = 8.dp),
+            .padding(start = 52.dp, top = 8.dp, end = 0.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
