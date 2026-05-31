@@ -268,8 +268,11 @@ object RelayClient {
         try {
             val json = JsonParser.parseString(text).asJsonObject
 
-            // Handle chat responses from Hermes
+            // Handle keepalive pings from relay — just ignore
             val msgType = json.get("type")?.asString
+            if (msgType == "ping") return
+
+            // Handle chat responses from Hermes
             if (msgType == "chat_response") {
                 val chatText = json.get("text")?.asString ?: ""
                 if (chatText.isNotBlank()) {
