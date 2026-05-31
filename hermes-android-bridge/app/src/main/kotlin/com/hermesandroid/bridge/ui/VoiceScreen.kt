@@ -170,7 +170,7 @@ fun VoiceAssistantScreen(
 
 @Composable
 fun ConnectionPanel(onConnect: (url: String) -> Unit) {
-    var serverUrl by remember { mutableStateOf(RelayClient.serverUrl ?: "") }
+    var serverUrl by remember { mutableStateOf(RelayClient.serverUrl ?: "ws://100.111.44.87:8766") }
 
     Surface(
         modifier = Modifier
