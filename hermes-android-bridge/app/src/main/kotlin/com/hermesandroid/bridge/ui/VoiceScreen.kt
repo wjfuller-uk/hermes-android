@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -69,7 +70,8 @@ fun VoiceAssistantScreen(
     viewModel: VoiceViewModel = viewModel(),
     onOpenSettings: () -> Unit = {},
     onConnect: (url: String, code: String) -> Unit = { _, _ -> },
-    onDisconnect: () -> Unit = {}
+    onDisconnect: () -> Unit = {},
+    onSendText: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
 
@@ -118,6 +120,11 @@ fun VoiceAssistantScreen(
                         EmptyStateHint()
                     }
                 }
+            }
+
+            // ── Text input bar ──
+            if (viewModel.isConnected) {
+                ChatInputBar(onSend = onSendText)
             }
 
             // ── Waveform bar ──
@@ -200,6 +207,79 @@ fun ConnectionPanel(onConnect: (url: String, code: String) -> Unit) {
                     color = Color(0xFF0D1117),
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
+                )
+            }
+        }
+    }
+}
+
+// ── Chat input bar ──────────────────────────────────────────────────────────
+
+@Composable
+fun ChatInputBar(onSend: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF161B22),
+        border = BorderStroke(1.dp, Color(0xFF30363D))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Text field
+            TextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = {
+                    Text(
+                        "Type a message...",
+                        color = Color(0xFF484F58),
+                        fontSize = 15.sp
+                    )
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = Color(0xFF58A6FF)
+                ),
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontSize = 15.sp)
+            )
+
+            // Send button
+            IconButton(
+                onClick = {
+                    if (text.isNotBlank()) {
+                        onSend(text.trim())
+                        text = ""
+                    }
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (text.isNotBlank()) Color(0xFFF0883E) else Color(0xFF21262D)
+                    )
+            ) {
+                Text(
+                    text = "↑",
+                    color = if (text.isNotBlank()) Color(0xFF0D1117) else Color(0xFF484F58),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

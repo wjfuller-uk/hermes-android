@@ -32,6 +32,7 @@ class VoiceActivity : ComponentActivity() {
             DisposableEffect(Unit) {
                 val originalCallback = RelayClient.onStatusChanged
                 val originalVoiceCallback = RelayClient.onVoiceStateChanged
+                val originalChatCallback = RelayClient.onChatResponse
                 RelayClient.onStatusChanged = { connected, message ->
                     viewModel.updateConnection(connected)
                     // Don't finish on disconnect — show reconnect UI instead
@@ -45,9 +46,13 @@ class VoiceActivity : ComponentActivity() {
                     }
                     viewModel.updateState(voiceState)
                 }
+                RelayClient.onChatResponse = { text ->
+                    viewModel.addMessage(text, isUser = false)
+                }
                 onDispose {
                     RelayClient.onStatusChanged = originalCallback
                     RelayClient.onVoiceStateChanged = originalVoiceCallback
+                    RelayClient.onChatResponse = originalChatCallback
                 }
             }
 
@@ -61,6 +66,10 @@ class VoiceActivity : ComponentActivity() {
                 },
                 onDisconnect = {
                     RelayClient.disconnect()
+                },
+                onSendText = { text ->
+                    viewModel.addMessage(text, isUser = true)
+                    RelayClient.sendChat(text)
                 }
             )
         }

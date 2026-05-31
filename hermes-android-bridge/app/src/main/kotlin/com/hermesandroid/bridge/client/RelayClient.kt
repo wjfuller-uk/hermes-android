@@ -64,6 +64,26 @@ object RelayClient {
     /** Callback for voice state changes. Called on main thread. */
     var onVoiceStateChanged: ((state: String) -> Unit)? = null
 
+    /** Callback for chat responses from Hermes. Called on main thread. */
+    var onChatResponse: ((text: String) -> Unit)? = null
+
+    /** Send a text chat message to Hermes via the relay. */
+    fun sendChat(text: String) {
+        val ws = webSocket ?: return
+        if (!isConnected) return
+        try {
+            val message = org.json.JSONObject().apply {
+                put("type", "chat")
+                put("text", text)
+                put("request_id", "chat_${System.currentTimeMillis()}")
+            }
+            ws.send(message.toString())
+            AppLogger.i(TAG, "Sent chat message: ${text.take(50)}")
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "Failed to send chat message: ${e.message}")
+        }
+    }
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -247,6 +267,18 @@ object RelayClient {
     private suspend fun handleMessage(ws: WebSocket, text: String) {
         try {
             val json = JsonParser.parseString(text).asJsonObject
+
+            // Handle chat responses from Hermes
+            val msgType = json.get("type")?.asString
+            if (msgType == "chat_response") {
+                val chatText = json.get("text")?.asString ?: ""
+                if (chatText.isNotBlank()) {
+                    AppLogger.i(TAG, "Chat response from Hermes: ${chatText.take(50)}")
+                    notifyChatResponse(chatText)
+                }
+                return
+            }
+
             val requestId = json.get("request_id")?.asString ?: ""
             val method = json.get("method")?.asString?.uppercase() ?: "GET"
             val path = json.get("path")?.asString ?: ""
@@ -315,6 +347,15 @@ object RelayClient {
         try {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 callback(state)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun notifyChatResponse(text: String) {
+        val callback = onChatResponse ?: return
+        try {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                callback(text)
             }
         } catch (_: Exception) {}
     }
