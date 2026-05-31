@@ -201,12 +201,15 @@ fun buildMarkdown(text: String, baseColor: Color = Text1, baseSize: Int = 15): A
                             append("  •  ")
                             append(parseInline(trimmed.removePrefix("* "), baseColor, baseSize))
                         }
-                        // Numbered list
-                        Regex("""^(\d+)\.\s""").find(trimmed)?.let { match ->
-                            append("  ${match.groupValues[1]}.  ")
-                            append(parseInline(trimmed.removePrefix(match.value), baseColor, baseSize))
-                        } ?: run {
-                            append(parseInline(trimmed, baseColor, baseSize))
+                        else -> {
+                            // Numbered list
+                            val match = Regex("""^(\d+)\.\s""").find(trimmed)
+                            if (match != null) {
+                                append("  ${match.groupValues[1]}.  ")
+                                append(parseInline(trimmed.removePrefix(match.value), baseColor, baseSize))
+                            } else {
+                                append(parseInline(trimmed, baseColor, baseSize))
+                            }
                         }
                     }
                 }
