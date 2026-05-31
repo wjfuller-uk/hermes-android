@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hermesandroid.bridge.client.RelayClient
+import com.hermesandroid.bridge.widgets.ToolEvent
 import com.hermesandroid.bridge.BuildConfig
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -48,6 +49,8 @@ class VoiceViewModel : ViewModel() {
     var voiceState by mutableStateOf(VoiceState.IDLE)
         private set
     var messages by mutableStateOf(listOf<ChatMessage>())
+        private set
+    var toolEvents by mutableStateOf(listOf<ToolEvent>())
         private set
     var isConnected by mutableStateOf(false)
         private set
@@ -78,6 +81,10 @@ class VoiceViewModel : ViewModel() {
         } else {
             partialTranscript = text
         }
+    }
+
+    fun addToolEvent(event: ToolEvent) {
+        toolEvents = toolEvents + event
     }
 
     fun togglePushToTalk() { isPushToTalk = !isPushToTalk }
@@ -152,10 +159,14 @@ fun VoiceAssistantScreen(
                     }
                 }
                 // Empty state
-                if (viewModel.messages.isEmpty() && viewModel.isConnected) {
+                if (viewModel.messages.isEmpty() && viewModel.toolEvents.isEmpty() && viewModel.isConnected) {
                     item {
                         EmptyStateHint()
                     }
+                }
+                // Widget cards from tool events
+                items(viewModel.toolEvents) { event ->
+                    com.hermesandroid.bridge.widgets.WidgetCard(event = event)
                 }
             }
 
