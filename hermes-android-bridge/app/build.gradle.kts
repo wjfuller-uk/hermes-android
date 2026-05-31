@@ -11,8 +11,8 @@ android {
         applicationId = "com.hermesandroid.bridge"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.4.0"
+        versionCode = 6
+        versionName = "0.6.0"
     }
 
     buildFeatures {

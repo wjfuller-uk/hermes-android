@@ -209,8 +209,7 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Enter a server URL", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val code = PairingManager.getCode()
-            RelayClient.connect(url, code)
+            RelayClient.connect(url)
         }
 
         btnDisconnect.setOnClickListener {

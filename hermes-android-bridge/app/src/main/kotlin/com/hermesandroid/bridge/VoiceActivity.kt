@@ -12,11 +12,15 @@ import com.hermesandroid.bridge.client.RelayClient
 import com.hermesandroid.bridge.ui.VoiceAssistantScreen
 import com.hermesandroid.bridge.ui.VoiceViewModel
 import com.hermesandroid.bridge.ui.VoiceState
+import com.hermesandroid.bridge.util.PermissionHelper
 
 class VoiceActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Request all permissions on first launch — voice, camera, notifications, etc.
+        PermissionHelper.requestAllPermissions(this)
 
         // Auto-connect if we have saved credentials and aren't already connected
         if (!RelayClient.isConnected) {
@@ -64,8 +68,8 @@ class VoiceActivity : ComponentActivity() {
                 onOpenDiagnostics = {
                     startActivity(Intent(this@VoiceActivity, DiagnosticsActivity::class.java))
                 },
-                onConnect = { url, code ->
-                    RelayClient.connect(url, code)
+                onConnect = { url ->
+                    RelayClient.connect(url)
                 },
                 onDisconnect = {
                     RelayClient.disconnect()

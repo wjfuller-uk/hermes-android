@@ -26,7 +26,6 @@ object RelayClient {
     private const val TAG = "RelayClient"
     private const val PREFS_NAME = "hermes_bridge_prefs"
     private const val KEY_SERVER_URL = "relay_server_url"
-    private const val KEY_PAIRING_CODE = "relay_pairing_code"
     private const val MAX_BACKOFF_MS = 30_000L
     private const val MAX_RETRIES = 5
 
@@ -53,10 +52,6 @@ object RelayClient {
     var serverUrl: String?
         get() = prefs?.getString(KEY_SERVER_URL, null)
         set(value) { prefs?.edit()?.putString(KEY_SERVER_URL, value)?.apply() }
-
-    var pairingCode: String?
-        get() = prefs?.getString(KEY_PAIRING_CODE, null)
-        set(value) { prefs?.edit()?.putString(KEY_PAIRING_CODE, value)?.apply() }
 
     /** Callback for UI updates. Called on main thread. */
     var onStatusChanged: ((connected: Boolean, message: String) -> Unit)? = null
@@ -107,7 +102,7 @@ object RelayClient {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    fun connect(serverUrl: String, pairingCode: String) {
+    fun connect(serverUrl: String) {
         // Guard against concurrent connects
         if (isConnected || isConnecting) {
             AppLogger.w(TAG, "Connect called while already connected/connecting — ignoring")
@@ -117,12 +112,11 @@ object RelayClient {
         disconnect()
 
         this.serverUrl = serverUrl
-        this.pairingCode = pairingCode
         shouldReconnect = true
         isConnecting = true
 
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        doConnect(serverUrl, pairingCode)
+        doConnect(serverUrl)
     }
 
     fun disconnect() {
@@ -142,10 +136,9 @@ object RelayClient {
     /** Try to auto-connect if server URL was previously saved. */
     fun autoConnect() {
         val url = serverUrl
-        val code = pairingCode
-        if (!url.isNullOrBlank() && !code.isNullOrBlank()) {
+        if (!url.isNullOrBlank()) {
             AppLogger.i(TAG, "Auto-connecting to $url")
-            connect(url, code)
+            connect(url)
         }
     }
 
@@ -166,10 +159,10 @@ object RelayClient {
         }
     }
 
-    private fun doConnect(serverUrl: String, pairingCode: String) {
-        val wsUrl = buildWsUrl(serverUrl, pairingCode)
-        AppLogger.i(TAG, "Connecting to ${buildWsUrl(serverUrl, "***")}")
-        notifyStatus(false, "Connecting to ${buildWsUrl(serverUrl, "***")} ...")
+    private fun doConnect(serverUrl: String) {
+        val wsUrl = buildWsUrl(serverUrl)
+        AppLogger.i(TAG, "Connecting to $wsUrl")
+        notifyStatus(false, "Connecting to $wsUrl ...")
 
         val request = Request.Builder()
             .url(wsUrl)
@@ -178,7 +171,7 @@ object RelayClient {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                AppLogger.i(TAG, "WebSocket connected to ${buildWsUrl(serverUrl, "***")}")
+                AppLogger.i(TAG, "WebSocket connected to $serverUrl")
                 isConnected = true
                 isConnecting = false
                 try {
@@ -230,7 +223,6 @@ object RelayClient {
     private fun scheduleReconnect() {
         if (!shouldReconnect) return
         val url = serverUrl ?: return
-        val code = pairingCode ?: return
 
         reconnectJob?.cancel()
         reconnectJob = scope?.launch {
@@ -242,7 +234,7 @@ object RelayClient {
                 notifyStatus(false, "Reconnecting in ${backoff / 1000}s... (attempt $retries/$MAX_RETRIES)")
                 delay(backoff)
                 if (shouldReconnect && !isConnected) {
-                    doConnect(url, code)
+                    doConnect(url)
                     delay(3000)
                     if (!isConnected) {
                         backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF_MS)
@@ -258,7 +250,7 @@ object RelayClient {
         }
     }
 
-    private fun buildWsUrl(serverUrl: String, pairingCode: String): String {
+    private fun buildWsUrl(serverUrl: String): String {
         val trimmed = serverUrl.trim().trimEnd('/')
         val useTls = trimmed.startsWith("https://") || trimmed.startsWith("wss://")
         var base = trimmed
@@ -279,8 +271,9 @@ object RelayClient {
         }
         val model = java.net.URLEncoder.encode(Build.MODEL ?: "unknown", "UTF-8")
         val brand = java.net.URLEncoder.encode(Build.BRAND ?: "unknown", "UTF-8")
-        if (BuildConfig.DEBUG) Log.d(TAG, "Built WebSocket URL: $scheme://$base/ws?token=***&device_id=$deviceId")
-        return "$scheme://$base/ws?token=$pairingCode&device_id=$deviceId&model=$model&brand=$brand"
+        // Token is just "hermes" — relay no longer validates it (Tailscale auth)
+        if (BuildConfig.DEBUG) Log.d(TAG, "Built WebSocket URL: $scheme://$base/ws?device_id=$deviceId")
+        return "$scheme://$base/ws?token=hermes&device_id=$deviceId&model=$model&brand=$brand"
     }
 
     private suspend fun handleMessage(ws: WebSocket, text: String) {

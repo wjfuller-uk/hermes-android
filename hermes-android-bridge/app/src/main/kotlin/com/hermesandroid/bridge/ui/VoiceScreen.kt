@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hermesandroid.bridge.client.RelayClient
+import com.hermesandroid.bridge.BuildConfig
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
@@ -82,7 +83,7 @@ fun VoiceAssistantScreen(
     viewModel: VoiceViewModel = viewModel(),
     onOpenSettings: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
-    onConnect: (url: String, code: String) -> Unit = { _, _ -> },
+    onConnect: (url: String) -> Unit = {},
     onDisconnect: () -> Unit = {},
     onSendText: (String) -> Unit = {},
     onStartVoice: () -> Unit = {},
@@ -168,9 +169,8 @@ fun VoiceAssistantScreen(
 // ── Connection panel ──────────────────────────────────────────────────────────
 
 @Composable
-fun ConnectionPanel(onConnect: (url: String, code: String) -> Unit) {
+fun ConnectionPanel(onConnect: (url: String) -> Unit) {
     var serverUrl by remember { mutableStateOf(RelayClient.serverUrl ?: "") }
-    var pairingCode by remember { mutableStateOf(RelayClient.pairingCode ?: "") }
 
     Surface(
         modifier = Modifier
@@ -192,23 +192,8 @@ fun ConnectionPanel(onConnect: (url: String, code: String) -> Unit) {
             OutlinedTextField(
                 value = serverUrl,
                 onValueChange = { serverUrl = it },
-                placeholder = { Text("wss://relay.example.com", color = Color(0xFF484F58)) },
+                placeholder = { Text("ws://100.111.44.87:8766", color = Color(0xFF484F58)) },
                 label = { Text("Server URL", color = Color(0xFF8B949E)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color(0xFF58A6FF),
-                    unfocusedBorderColor = Color(0xFF30363D),
-                    cursorColor = Color(0xFF58A6FF)
-                )
-            )
-            OutlinedTextField(
-                value = pairingCode,
-                onValueChange = { pairingCode = it },
-                placeholder = { Text("Pairing code", color = Color(0xFF484F58)) },
-                label = { Text("Pairing Code", color = Color(0xFF8B949E)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -221,8 +206,8 @@ fun ConnectionPanel(onConnect: (url: String, code: String) -> Unit) {
             )
             Button(
                 onClick = {
-                    if (serverUrl.isNotBlank() && pairingCode.isNotBlank()) {
-                        onConnect(serverUrl.trim(), pairingCode.trim())
+                    if (serverUrl.isNotBlank()) {
+                        onConnect(serverUrl.trim())
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -470,8 +455,14 @@ fun VoiceHeader(
                 )
                 if (isConnected && deviceName.isNotBlank()) {
                     Text(
-                        text = deviceName,
+                        text = "v${BuildConfig.VERSION_NAME} • $deviceName",
                         color = Color(0xFF8B949E),
+                        fontSize = 11.sp
+                    )
+                } else if (!isConnected) {
+                    Text(
+                        text = "v${BuildConfig.VERSION_NAME}",
+                        color = Color(0xFF484F58),
                         fontSize = 11.sp
                     )
                 }
