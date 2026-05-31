@@ -408,6 +408,20 @@
         android:textColor="#FFFFFF"
         android:fontFamily="monospace"
         android:background="@drawable/bg_button_disconnect"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone"
+        android:textAllCaps="false" />
+
+    <Button
+        android:id="@+id/btnVoice"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="VOICE ASSISTANT"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:fontFamily="monospace"
+        android:background="@drawable/bg_button_orange"
         android:layout_marginBottom="16dp"
         android:visibility="gone"
         android:textAllCaps="false" />

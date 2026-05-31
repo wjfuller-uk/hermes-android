@@ -50,6 +50,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".VoiceActivity"
+            android:exported="false"
+            android:theme="@style/Theme.HermesBridge" />
+
         <!-- Accessibility service declaration -->
         <service
             android:name=".service.BridgeAccessibilityService"

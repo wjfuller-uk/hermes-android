@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var tvRelayStatus: TextView
     private lateinit var btnConnect: Button
     private lateinit var btnDisconnect: Button
+    private lateinit var btnVoice: Button
     private lateinit var tvAddress: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,6 +68,7 @@ class MainActivity : Activity() {
         tvRelayStatus = findViewById(R.id.tvRelayStatus)
         btnConnect = findViewById(R.id.btnConnect)
         btnDisconnect = findViewById(R.id.btnDisconnect)
+        btnVoice = findViewById(R.id.btnVoice)
         tvAddress = findViewById(R.id.tvAddress)
 
         setupPairingCode()
@@ -180,6 +182,7 @@ class MainActivity : Activity() {
                 if (connected) 0xFF4CAF50.toInt() else 0xFF888888.toInt()
             )
             btnDisconnect.visibility = if (connected || RelayClient.isConnected) View.VISIBLE else View.GONE
+            btnVoice.visibility = if (connected || RelayClient.isConnected) View.VISIBLE else View.GONE
             btnConnect.text = if (RelayClient.isConnected) "CONNECTED" else "CONNECT"
             btnConnect.background = getDrawable(
                 if (RelayClient.isConnected) R.drawable.bg_input_dark else R.drawable.bg_button_orange
@@ -204,10 +207,16 @@ class MainActivity : Activity() {
         btnDisconnect.setOnClickListener {
             RelayClient.disconnect()
             btnDisconnect.visibility = View.GONE
+            btnVoice.visibility = View.GONE
             btnConnect.text = "CONNECT"
             btnConnect.background = getDrawable(R.drawable.bg_button_orange)
             btnConnect.setTextColor(0xFF1A1A1A.toInt())
             updateStatus()
+        }
+
+        btnVoice.setOnClickListener {
+            val intent = Intent(this, VoiceActivity::class.java)
+            startActivity(intent)
         }
 
         updateRelayButton()
@@ -216,6 +225,7 @@ class MainActivity : Activity() {
     private fun updateRelayButton() {
         if (RelayClient.isConnected) {
             btnDisconnect.visibility = View.VISIBLE
+            btnVoice.visibility = View.VISIBLE
             btnConnect.text = "CONNECTED"
             btnConnect.background = getDrawable(R.drawable.bg_input_dark)
             btnConnect.setTextColor(0xFF4CAF50.toInt())
@@ -223,6 +233,7 @@ class MainActivity : Activity() {
             tvRelayStatus.setTextColor(0xFF4CAF50.toInt())
         } else {
             btnDisconnect.visibility = View.GONE
+            btnVoice.visibility = View.GONE
             btnConnect.text = "CONNECT"
             btnConnect.background = getDrawable(R.drawable.bg_button_orange)
             btnConnect.setTextColor(0xFF1A1A1A.toInt())
