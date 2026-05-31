@@ -118,6 +118,8 @@ class VoiceViewModel : ViewModel() {
             partialTranscript = ""
             if (text.isNotBlank()) {
                 messages = messages + ChatMessage(text = text, isUser = true)
+                isThinking = true       // Hermes is about to respond
+                updateState(VoiceState.PROCESSING)
             }
         } else {
             partialTranscript = text

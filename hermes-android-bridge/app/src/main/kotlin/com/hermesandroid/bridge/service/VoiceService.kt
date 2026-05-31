@@ -262,8 +262,9 @@ class VoiceService : Service() {
                 RelayClient.sendChat(text)
             }
 
-            // Restart listening for next utterance
-            restartListening()
+            // Auto-stop service after sending — one utterance per mic tap.
+            // The service's onDestroy will clean up the recognizer.
+            stopSelf()
         }
 
         override fun onError(error: Int) {

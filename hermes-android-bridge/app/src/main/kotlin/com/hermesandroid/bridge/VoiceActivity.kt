@@ -80,7 +80,10 @@ class VoiceActivity : ComponentActivity() {
                     // Speak Hermes response when in voice mode
                     if (isVoiceMode) {
                         speak(text)
+                        isVoiceMode = false  // One-shot: reset after speaking
                     }
+                    // Return to idle after response
+                    viewModel.updateState(VoiceState.IDLE)
                 }
                 RelayClient.onTranscript = { text, isFinal ->
                     viewModel.updateTranscript(text, isFinal)
