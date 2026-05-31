@@ -3,6 +3,7 @@ package com.hermesandroid.bridge
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
@@ -14,14 +15,21 @@ import com.hermesandroid.bridge.ui.VoiceAssistantScreen
 import com.hermesandroid.bridge.ui.VoiceViewModel
 import com.hermesandroid.bridge.ui.VoiceState
 import com.hermesandroid.bridge.util.PermissionHelper
+import java.util.*
 
 class VoiceActivity : ComponentActivity() {
+
+    private var tts: TextToSpeech? = null
+    private var isVoiceMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Request all permissions on first launch — voice, camera, notifications, etc.
         PermissionHelper.requestAllPermissions(this)
+
+        // Initialize TTS for speaking Hermes responses
+        initTts()
 
         // Auto-connect if we have saved credentials and aren't already connected
         if (!RelayClient.isConnected) {
@@ -35,12 +43,13 @@ class VoiceActivity : ComponentActivity() {
 
             // Observe connection status
             DisposableEffect(Unit) {
-                val originalCallback = RelayClient.onStatusChanged
+                val originalStatusCallback = RelayClient.onStatusChanged
                 val originalVoiceCallback = RelayClient.onVoiceStateChanged
                 val originalChatCallback = RelayClient.onChatResponse
+                val originalTranscriptCallback = RelayClient.onTranscript
+
                 RelayClient.onStatusChanged = { connected, message ->
                     viewModel.updateConnection(connected)
-                    // Don't finish on disconnect — show reconnect UI instead
                 }
                 RelayClient.onVoiceStateChanged = { state ->
                     val voiceState = when (state) {
@@ -53,11 +62,19 @@ class VoiceActivity : ComponentActivity() {
                 }
                 RelayClient.onChatResponse = { text ->
                     viewModel.addMessage(text, isUser = false)
+                    // Speak Hermes response when in voice mode
+                    if (isVoiceMode) {
+                        speak(text)
+                    }
+                }
+                RelayClient.onTranscript = { text, isFinal ->
+                    viewModel.updateTranscript(text, isFinal)
                 }
                 onDispose {
-                    RelayClient.onStatusChanged = originalCallback
+                    RelayClient.onStatusChanged = originalStatusCallback
                     RelayClient.onVoiceStateChanged = originalVoiceCallback
                     RelayClient.onChatResponse = originalChatCallback
+                    RelayClient.onTranscript = originalTranscriptCallback
                 }
             }
 
@@ -80,7 +97,7 @@ class VoiceActivity : ComponentActivity() {
                     RelayClient.sendChat(text)
                 },
                 onStartVoice = {
-                    // Start the mic streaming service AND tell the relay
+                    isVoiceMode = true
                     val intent = Intent(this@VoiceActivity, VoiceService::class.java)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(intent)
@@ -92,12 +109,38 @@ class VoiceActivity : ComponentActivity() {
                     viewModel.updateState(VoiceState.LISTENING)
                 },
                 onStopVoice = {
-                    // Stop the mic streaming service AND tell the relay
+                    isVoiceMode = false
                     stopService(Intent(this@VoiceActivity, VoiceService::class.java))
                     RelayClient.sendCommand("POST", "/voice/stop")
                     viewModel.updateState(VoiceState.IDLE)
                 }
             )
         }
+    }
+
+    private fun initTts() {
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.UK
+                tts?.setSpeechRate(1.0f)
+            }
+        }
+    }
+
+    private fun speak(text: String) {
+        tts?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                it.speak(text, TextToSpeech.QUEUE_FLUSH, null, "hermes_tts_${System.currentTimeMillis()}")
+            } else {
+                @Suppress("DEPRECATION")
+                it.speak(text, TextToSpeech.QUEUE_FLUSH, null)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        tts?.stop()
+        tts?.shutdown()
+        super.onDestroy()
     }
 }

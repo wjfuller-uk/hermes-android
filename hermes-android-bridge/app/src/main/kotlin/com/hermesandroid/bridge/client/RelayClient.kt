@@ -63,6 +63,9 @@ object RelayClient {
     /** Callback for chat responses from Hermes. Called on main thread. */
     var onChatResponse: ((text: String) -> Unit)? = null
 
+    /** Callback for speech transcripts (partial and final). Called on main thread. */
+    var onTranscript: ((text: String, isFinal: Boolean) -> Unit)? = null
+
     /** Send a text chat message to Hermes via the relay. */
     fun sendChat(text: String) {
         val ws = webSocket ?: return
@@ -386,6 +389,16 @@ object RelayClient {
         try {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 callback(text)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** Called by VoiceService when speech transcripts are available. Thread-safe. */
+    fun notifyTranscript(text: String, isFinal: Boolean) {
+        val callback = onTranscript ?: return
+        try {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                callback(text, isFinal)
             }
         } catch (_: Exception) {}
     }

@@ -59,12 +59,25 @@ class VoiceViewModel : ViewModel() {
         private set
     var micLevel by mutableStateOf(0f)
         private set
+    var partialTranscript by mutableStateOf("")
+        private set
 
     fun updateConnection(connected: Boolean) { isConnected = connected }
     fun updateDeviceName(name: String) { deviceName = name }
 
     fun updateState(state: VoiceState) { voiceState = state }
     fun updateMicLevel(level: Float) { micLevel = level }
+
+    fun updateTranscript(text: String, isFinal: Boolean) {
+        if (isFinal) {
+            partialTranscript = ""
+            if (text.isNotBlank()) {
+                messages = messages + ChatMessage(text = text, isUser = true)
+            }
+        } else {
+            partialTranscript = text
+        }
+    }
 
     fun togglePushToTalk() { isPushToTalk = !isPushToTalk }
     fun toggleAlwaysOn() { isAlwaysOn = !isAlwaysOn }
@@ -130,6 +143,12 @@ fun VoiceAssistantScreen(
             ) {
                 items(viewModel.messages) { msg ->
                     MessageBubble(message = msg)
+                }
+                // Show partial transcript as a ghost bubble
+                if (viewModel.partialTranscript.isNotBlank()) {
+                    item {
+                        PartialTranscriptBubble(text = viewModel.partialTranscript)
+                    }
                 }
                 // Empty state
                 if (viewModel.messages.isEmpty() && viewModel.isConnected) {
@@ -507,6 +526,56 @@ fun VoiceHeader(
                 TextButton(onClick = onDisconnect) {
                     Text("Disconnect", color = Color(0xFF8B949E), fontSize = 13.sp)
                 }
+            }
+        }
+    }
+}
+
+// ── Partial transcript bubble (live speech) ──────────────────────────────────
+
+@Composable
+fun PartialTranscriptBubble(text: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.End
+    ) {
+        Surface(
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 4.dp
+            ),
+            color = Color(0xFF238636).copy(alpha = 0.5f),
+            border = BorderStroke(1.dp, Color(0xFF238636).copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = text,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(6.dp))
+                // Pulsing dot to show live listening
+                val dotAlpha by rememberInfiniteTransition().animateFloat(
+                    initialValue = 0.3f,
+                    targetValue = 1.0f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(600, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    )
+                )
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFF0883E).copy(alpha = dotAlpha))
+                )
             }
         }
     }
