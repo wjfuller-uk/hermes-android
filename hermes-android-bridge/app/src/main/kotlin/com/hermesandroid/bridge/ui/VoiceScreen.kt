@@ -2,6 +2,8 @@ package com.hermesandroid.bridge.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hermesandroid.bridge.client.RelayClient
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
@@ -44,8 +47,11 @@ class VoiceViewModel : ViewModel() {
         private set
     var isConnected by mutableStateOf(false)
         private set
+    var deviceName by mutableStateOf("")
+        private set
 
     fun updateConnection(connected: Boolean) { isConnected = connected }
+    fun updateDeviceName(name: String) { deviceName = name }
 
     fun updateState(state: VoiceState) { voiceState = state }
 
@@ -61,6 +67,8 @@ class VoiceViewModel : ViewModel() {
 @Composable
 fun VoiceAssistantScreen(
     viewModel: VoiceViewModel = viewModel(),
+    onOpenSettings: () -> Unit = {},
+    onConnect: (url: String, code: String) -> Unit = { _, _ -> },
     onDisconnect: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
@@ -81,8 +89,15 @@ fun VoiceAssistantScreen(
             VoiceHeader(
                 state = viewModel.voiceState,
                 isConnected = viewModel.isConnected,
+                deviceName = viewModel.deviceName,
+                onOpenSettings = onOpenSettings,
                 onDisconnect = onDisconnect
             )
+
+            // ── Connection UI (shown when disconnected) ──
+            if (!viewModel.isConnected) {
+                ConnectionPanel(onConnect = onConnect)
+            }
 
             // ── Messages ──
             LazyColumn(
@@ -98,7 +113,7 @@ fun VoiceAssistantScreen(
                     MessageBubble(message = msg)
                 }
                 // Empty state
-                if (viewModel.messages.isEmpty()) {
+                if (viewModel.messages.isEmpty() && viewModel.isConnected) {
                     item {
                         EmptyStateHint()
                     }
@@ -114,12 +129,91 @@ fun VoiceAssistantScreen(
     }
 }
 
+// ── Connection panel ──────────────────────────────────────────────────────────
+
+@Composable
+fun ConnectionPanel(onConnect: (url: String, code: String) -> Unit) {
+    var serverUrl by remember { mutableStateOf(RelayClient.serverUrl ?: "") }
+    var pairingCode by remember { mutableStateOf(RelayClient.pairingCode ?: "") }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF161B22)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Connect to Server",
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp
+            )
+            OutlinedTextField(
+                value = serverUrl,
+                onValueChange = { serverUrl = it },
+                placeholder = { Text("wss://relay.example.com", color = Color(0xFF484F58)) },
+                label = { Text("Server URL", color = Color(0xFF8B949E)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF58A6FF),
+                    unfocusedBorderColor = Color(0xFF30363D),
+                    cursorColor = Color(0xFF58A6FF)
+                )
+            )
+            OutlinedTextField(
+                value = pairingCode,
+                onValueChange = { pairingCode = it },
+                placeholder = { Text("Pairing code", color = Color(0xFF484F58)) },
+                label = { Text("Pairing Code", color = Color(0xFF8B949E)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF58A6FF),
+                    unfocusedBorderColor = Color(0xFF30363D),
+                    cursorColor = Color(0xFF58A6FF)
+                )
+            )
+            Button(
+                onClick = {
+                    if (serverUrl.isNotBlank() && pairingCode.isNotBlank()) {
+                        onConnect(serverUrl.trim(), pairingCode.trim())
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF0883E)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = "CONNECT",
+                    color = Color(0xFF0D1117),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
 
 @Composable
 fun VoiceHeader(
     state: VoiceState,
     isConnected: Boolean,
+    deviceName: String,
+    onOpenSettings: () -> Unit,
     onDisconnect: () -> Unit
 ) {
     Row(
@@ -130,8 +224,9 @@ fun VoiceHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+        // Left side: status dot + title + device name
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Status dot
+            // Connection status dot
             Box(
                 modifier = Modifier
                     .size(10.dp)
@@ -148,15 +243,46 @@ fun VoiceHeader(
                     )
             )
             Spacer(Modifier.width(10.dp))
-            Text(
-                text = "Hermes",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+            Column {
+                Text(
+                    text = "Hermes",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                if (isConnected && deviceName.isNotBlank()) {
+                    Text(
+                        text = deviceName,
+                        color = Color(0xFF8B949E),
+                        fontSize = 11.sp
+                    )
+                }
+            }
         }
-        TextButton(onClick = onDisconnect) {
-            Text("Disconnect", color = Color(0xFF8B949E), fontSize = 13.sp)
+
+        // Right side: settings gear + disconnect
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Settings gear icon
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable { onOpenSettings() }
+                    .background(Color(0xFF21262D)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "⚙",
+                    color = Color(0xFF8B949E),
+                    fontSize = 18.sp
+                )
+            }
+            if (isConnected) {
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onDisconnect) {
+                    Text("Disconnect", color = Color(0xFF8B949E), fontSize = 13.sp)
+                }
+            }
         }
     }
 }

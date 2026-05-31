@@ -11,6 +11,7 @@ import com.hermesandroid.bridge.media.ScreenRecorder
 import com.hermesandroid.bridge.model.DeviceCapabilities
 import com.hermesandroid.bridge.model.ScreenNode
 import com.hermesandroid.bridge.notification.NotificationStore
+import com.hermesandroid.bridge.notification.Notifier
 import com.hermesandroid.bridge.service.BridgeAccessibilityService
 import com.hermesandroid.bridge.service.BridgeNotificationListener
 import kotlinx.coroutines.Dispatchers
@@ -379,6 +380,14 @@ object CommandDispatcher {
                     ActionExecutor.execShell(command, timeoutMs)
                 }
                 result to 200
+            }
+
+            method == "POST" && path == "/notify" -> {
+                val title = body.get("title")?.asString ?: "Hermes"
+                val text = body.get("body")?.asString ?: ""
+                val channel = body.get("channel")?.asString ?: "hermes"
+                Notifier.show(title, text, channel)
+                Pair(mapOf("success" to true, "title" to title), 200)
             }
 
             else -> {

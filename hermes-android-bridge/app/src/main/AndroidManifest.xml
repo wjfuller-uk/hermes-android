@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <!-- Voice: microphone for always-on listening -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Push notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Camera: photo capture for vision -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -43,17 +45,18 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true" />
+
+        <activity
+            android:name=".VoiceActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.HermesBridge">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".VoiceActivity"
-            android:exported="false"
-            android:theme="@style/Theme.HermesBridge" />
 
         <activity
             android:name=".ui.LogActivity"
