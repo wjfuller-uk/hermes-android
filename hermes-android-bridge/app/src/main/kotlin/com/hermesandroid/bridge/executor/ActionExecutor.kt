@@ -854,22 +854,13 @@ object ActionExecutor {
      * Uses CameraX if available, falls back to MediaStore intent.
      * Returns base64-encoded JPEG.
      */
-    fun takePhoto(): ActionResult {
+    suspend fun takePhoto(): ActionResult {
         val context = BridgeAccessibilityService.instance ?: return ActionResult(false, "Accessibility service not running")
 
-        // Quick check: use the built-in camera intent for v1
-        // This avoids CameraX dependency for now
         return try {
-            // Fallback: capture via screencap if camera not available
-            // In v1, take a screenshot as fallback since we always have screen access
             val result = takeScreenshot()
             if (result.success) {
-                ActionResult(true, mapOf(
-                    "image" to (result.data as? Map<*, *>)?.get("image"),
-                    "width" to (result.data as? Map<*, *>)?.get("width"),
-                    "height" to (result.data as? Map<*, *>)?.get("height"),
-                    "source" to "screenshot_fallback"
-                ))
+                ActionResult(true, "Photo captured (screenshot fallback)", result.data)
             } else {
                 ActionResult(false, "Camera not available — grant CAMERA permission or use screenshot")
             }
@@ -889,13 +880,10 @@ object ActionExecutor {
             val stdout = process.inputStream.bufferedReader().use { it.readText() }
             val stderr = process.errorStream.bufferedReader().use { it.readText() }
             
-            val exited = process.waitFor()
+            process.waitFor()
             
-            ActionResult(true, mapOf(
-                "stdout" to stdout.trim(),
-                "stderr" to stderr.trim(),
-                "exitCode" to process.exitValue()
-            ))
+            val output = "stdout:\n${stdout.trim()}\nstderr:\n${stderr.trim()}\nexit: ${process.exitValue()}"
+            ActionResult(true, output)
         } catch (e: SecurityException) {
             ActionResult(false, "Shell execution not permitted: ${e.message}")
         } catch (e: Exception) {

@@ -143,6 +143,7 @@ fun VoiceHeader(
                             state == VoiceState.LISTENING -> Color(0xFF58A6FF) // blue
                             state == VoiceState.PROCESSING -> Color(0xFFD29922) // amber
                             state == VoiceState.SPEAKING -> Color(0xFFA371F7) // purple
+                            else -> Color(0xFF3FB950) // fallback green
                         }
                     )
             )
