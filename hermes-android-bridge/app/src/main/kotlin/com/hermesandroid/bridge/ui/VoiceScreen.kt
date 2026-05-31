@@ -61,6 +61,7 @@ class VoiceViewModel : ViewModel() {
         private set
     var partialTranscript by mutableStateOf("")
         private set
+    var voiceStatusMessage by mutableStateOf("")
 
     fun updateConnection(connected: Boolean) { isConnected = connected }
     fun updateDeviceName(name: String) { deviceName = name }
@@ -180,7 +181,7 @@ fun VoiceAssistantScreen(
             VoiceWaveform(state = viewModel.voiceState)
 
             // ── Status footer ──
-            StatusFooter(state = viewModel.voiceState)
+            StatusFooter(state = viewModel.voiceState, statusMessage = viewModel.voiceStatusMessage)
         }
     }
 }
@@ -760,7 +761,7 @@ fun IdleBars(alpha: Float, barWidths: List<Float>) {
 // ── Status footer ─────────────────────────────────────────────────────────────
 
 @Composable
-fun StatusFooter(state: VoiceState) {
+fun StatusFooter(state: VoiceState, statusMessage: String = "") {
     val (label, color) = when (state) {
         VoiceState.IDLE -> "Ready" to Color(0xFF3FB950)
         VoiceState.LISTENING -> "Listening..." to Color(0xFF58A6FF)
@@ -768,27 +769,38 @@ fun StatusFooter(state: VoiceState) {
         VoiceState.SPEAKING -> "Speaking..." to Color(0xFFA371F7)
     }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF161B22))
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (state != VoiceState.IDLE) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (state != VoiceState.IDLE) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    color = color,
+                    strokeWidth = 2.dp
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(
+                text = label,
                 color = color,
-                strokeWidth = 2.dp
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
             )
-            Spacer(Modifier.width(8.dp))
         }
-        Text(
-            text = label,
-            color = color,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium
-        )
+        if (statusMessage.isNotBlank() && statusMessage != label) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = statusMessage,
+                color = Color(0xFF8B949E),
+                fontSize = 11.sp
+            )
+        }
     }
 }

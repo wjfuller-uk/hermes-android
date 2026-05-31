@@ -47,6 +47,7 @@ class VoiceActivity : ComponentActivity() {
                 val originalVoiceCallback = RelayClient.onVoiceStateChanged
                 val originalChatCallback = RelayClient.onChatResponse
                 val originalTranscriptCallback = RelayClient.onTranscript
+                val originalVoiceStatusCallback = RelayClient.onVoiceStatus
 
                 RelayClient.onStatusChanged = { connected, message ->
                     viewModel.updateConnection(connected)
@@ -70,11 +71,19 @@ class VoiceActivity : ComponentActivity() {
                 RelayClient.onTranscript = { text, isFinal ->
                     viewModel.updateTranscript(text, isFinal)
                 }
+                RelayClient.onVoiceStatus = { message, isError ->
+                    if (isError) {
+                        android.widget.Toast.makeText(this@VoiceActivity, message, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    // Non-error status messages just flow to the status footer
+                    viewModel.voiceStatusMessage = message
+                }
                 onDispose {
                     RelayClient.onStatusChanged = originalStatusCallback
                     RelayClient.onVoiceStateChanged = originalVoiceCallback
                     RelayClient.onChatResponse = originalChatCallback
                     RelayClient.onTranscript = originalTranscriptCallback
+                    RelayClient.onVoiceStatus = originalVoiceStatusCallback
                 }
             }
 
@@ -113,6 +122,7 @@ class VoiceActivity : ComponentActivity() {
                     stopService(Intent(this@VoiceActivity, VoiceService::class.java))
                     RelayClient.sendCommand("POST", "/voice/stop")
                     viewModel.updateState(VoiceState.IDLE)
+                    viewModel.voiceStatusMessage = ""
                 }
             )
         }

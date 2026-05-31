@@ -16,9 +16,9 @@ import android.os.IBinder
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
 import com.hermesandroid.bridge.MainActivity
 import com.hermesandroid.bridge.client.RelayClient
+import com.hermesandroid.bridge.util.AppLogger
 import kotlinx.coroutines.*
 
 /**
@@ -60,14 +60,14 @@ class VoiceService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        Log.i(TAG, "VoiceService created")
+        AppLogger.i(TAG, "VoiceService created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = buildNotification()
         startForeground(NOTIFICATION_ID, notification)
         startListening()
-        Log.i(TAG, "VoiceService started — on-device speech recognition")
+        AppLogger.i(TAG, "VoiceService started — on-device speech recognition")
         return START_STICKY
     }
 
@@ -75,7 +75,7 @@ class VoiceService : Service() {
         stopListening()
         scope.cancel()
         isRunning = false
-        Log.i(TAG, "VoiceService destroyed")
+        AppLogger.i(TAG, "VoiceService destroyed")
         super.onDestroy()
     }
 
@@ -87,7 +87,8 @@ class VoiceService : Service() {
         if (isRunning) return
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Log.w(TAG, "SpeechRecognizer not available — falling back to PCM streaming")
+            AppLogger.w(TAG, "SpeechRecognizer not available — falling back to PCM streaming")
+            RelayClient.notifyVoiceStatus("On-device speech not available — using server transcription", isError = false)
             fallbackToRawAudio()
             return
         }
@@ -108,9 +109,9 @@ class VoiceService : Service() {
         try {
             speechRecognizer?.startListening(recognizerIntent)
             isRunning = true
-            Log.i(TAG, "SpeechRecognizer started — listening for speech")
+            AppLogger.i(TAG, "SpeechRecognizer started — listening for speech")
         } catch (e: Exception) {
-            Log.e(TAG, "SpeechRecognizer failed to start: ${e.message}", e)
+            AppLogger.e(TAG, "SpeechRecognizer failed to start: ${e.message}", e)
             fallbackToRawAudio()
         }
     }
@@ -121,7 +122,7 @@ class VoiceService : Service() {
             speechRecognizer?.stopListening()
             speechRecognizer?.destroy()
         } catch (e: Exception) {
-            Log.w(TAG, "Error stopping SpeechRecognizer: ${e.message}")
+            AppLogger.w(TAG, "Error stopping SpeechRecognizer: ${e.message}")
         }
         speechRecognizer = null
         stopRawAudio()
@@ -132,7 +133,7 @@ class VoiceService : Service() {
         try {
             speechRecognizer?.startListening(recognizerIntent)
         } catch (e: Exception) {
-            Log.w(TAG, "Error restarting SpeechRecognizer: ${e.message}")
+            AppLogger.w(TAG, "Error restarting SpeechRecognizer: ${e.message}")
             restartListeningDelayed()
         }
     }
@@ -151,7 +152,7 @@ class VoiceService : Service() {
     // ── Fallback: raw PCM streaming (when SpeechRecognizer unavailable) ────
 
     private fun fallbackToRawAudio() {
-        Log.i(TAG, "Switching to raw PCM audio streaming fallback")
+        AppLogger.i(TAG, "Switching to raw PCM audio streaming fallback")
         stopListening() // clean up any partial SpeechRecognizer state
         startRawAudio()
     }
@@ -168,7 +169,7 @@ class VoiceService : Service() {
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, bufferSize
             )
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord failed to initialize")
+                AppLogger.e(TAG, "AudioRecord failed to initialize")
                 stopSelf()
                 return
             }
@@ -183,20 +184,23 @@ class VoiceService : Service() {
                         try {
                             RelayClient.sendBinary(buffer.copyOf(bytesRead))
                         } catch (e: Exception) {
-                            Log.w(TAG, "Failed to send audio frame: ${e.message}")
+                            AppLogger.w(TAG, "Failed to send audio frame: ${e.message}")
                         }
                     } else if (bytesRead < 0) {
-                        Log.e(TAG, "AudioRecord read error: $bytesRead")
+                        AppLogger.e(TAG, "AudioRecord read error: $bytesRead")
                         break
                     }
                 }
             }
-            Log.i(TAG, "PCM audio streaming started")
+            AppLogger.i(TAG, "PCM audio streaming started")
+            RelayClient.notifyVoiceStatus("Mic streaming to server — speak now", isError = false)
         } catch (e: SecurityException) {
-            Log.e(TAG, "Microphone permission denied", e)
+            AppLogger.e(TAG, "Microphone permission denied", e)
+            RelayClient.notifyVoiceStatus("Microphone permission denied — grant in Settings", isError = true)
             stopSelf()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start audio capture", e)
+            AppLogger.e(TAG, "Failed to start audio capture", e)
+            RelayClient.notifyVoiceStatus("Mic error: ${e.message}", isError = true)
             stopSelf()
         }
     }
@@ -214,11 +218,11 @@ class VoiceService : Service() {
     inner class VoiceRecognitionListener : RecognitionListener {
 
         override fun onReadyForSpeech(params: Bundle?) {
-            Log.d(TAG, "Ready for speech")
+            AppLogger.d(TAG, "Ready for speech")
         }
 
         override fun onBeginningOfSpeech() {
-            Log.d(TAG, "Speech started")
+            AppLogger.d(TAG, "Speech started")
         }
 
         override fun onRmsChanged(rmsdB: Float) {
@@ -228,7 +232,7 @@ class VoiceService : Service() {
         override fun onBufferReceived(buffer: ByteArray?) {}
 
         override fun onEndOfSpeech() {
-            Log.d(TAG, "Speech ended")
+            AppLogger.d(TAG, "Speech ended")
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
@@ -237,7 +241,7 @@ class VoiceService : Service() {
                 ?: return
             if (matches.isEmpty()) return
             val text = matches[0]
-            Log.d(TAG, "Partial: $text")
+            AppLogger.d(TAG, "Partial: $text")
             // Show live transcript in UI
             RelayClient.notifyTranscript(text, isFinal = false)
         }
@@ -248,7 +252,7 @@ class VoiceService : Service() {
                 ?: return
             if (matches.isEmpty()) return
             val text = matches[0]
-            Log.i(TAG, "Final: $text")
+            AppLogger.i(TAG, "Final: $text")
 
             // Show final transcript
             RelayClient.notifyTranscript(text, isFinal = true)
@@ -275,7 +279,7 @@ class VoiceService : Service() {
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
                 else -> "Unknown error ($error)"
             }
-            Log.w(TAG, "SpeechRecognizer error: $errorMsg")
+            AppLogger.w(TAG, "SpeechRecognizer error: $errorMsg")
 
             when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH,
@@ -287,7 +291,7 @@ class VoiceService : Service() {
                 SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
                 SpeechRecognizer.ERROR_SERVER -> {
                     // Network/server issues — fall back to raw audio
-                    Log.w(TAG, "SpeechRecognizer network error, falling back to PCM")
+                    AppLogger.w(TAG, "SpeechRecognizer network error, falling back to PCM")
                     fallbackToRawAudio()
                 }
                 else -> {
