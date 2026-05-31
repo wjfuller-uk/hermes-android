@@ -52,11 +52,21 @@ class VoiceViewModel : ViewModel() {
         private set
     var deviceName by mutableStateOf("")
         private set
+    var isPushToTalk by mutableStateOf(false)
+        private set
+    var isAlwaysOn by mutableStateOf(false)
+        private set
+    var micLevel by mutableStateOf(0f)
+        private set
 
     fun updateConnection(connected: Boolean) { isConnected = connected }
     fun updateDeviceName(name: String) { deviceName = name }
 
     fun updateState(state: VoiceState) { voiceState = state }
+    fun updateMicLevel(level: Float) { micLevel = level }
+
+    fun togglePushToTalk() { isPushToTalk = !isPushToTalk }
+    fun toggleAlwaysOn() { isAlwaysOn = !isAlwaysOn }
 
     fun addMessage(text: String, isUser: Boolean) {
         messages = messages + ChatMessage(text = text, isUser = isUser)
@@ -71,9 +81,12 @@ class VoiceViewModel : ViewModel() {
 fun VoiceAssistantScreen(
     viewModel: VoiceViewModel = viewModel(),
     onOpenSettings: () -> Unit = {},
+    onOpenDiagnostics: () -> Unit = {},
     onConnect: (url: String, code: String) -> Unit = { _, _ -> },
     onDisconnect: () -> Unit = {},
-    onSendText: (String) -> Unit = {}
+    onSendText: (String) -> Unit = {},
+    onStartVoice: () -> Unit = {},
+    onStopVoice: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
 
@@ -95,6 +108,7 @@ fun VoiceAssistantScreen(
                 isConnected = viewModel.isConnected,
                 deviceName = viewModel.deviceName,
                 onOpenSettings = onOpenSettings,
+                onOpenDiagnostics = onOpenDiagnostics,
                 onDisconnect = onDisconnect
             )
 
@@ -127,6 +141,19 @@ fun VoiceAssistantScreen(
             // ── Text input bar ──
             if (viewModel.isConnected) {
                 ChatInputBar(onSend = onSendText)
+            }
+
+            // ── Push-to-talk controls ──
+            if (viewModel.isConnected) {
+                PushToTalkBar(
+                    isPushToTalk = viewModel.isPushToTalk,
+                    isAlwaysOn = viewModel.isAlwaysOn,
+                    voiceState = viewModel.voiceState,
+                    onTogglePushToTalk = { viewModel.togglePushToTalk() },
+                    onToggleAlwaysOn = { viewModel.toggleAlwaysOn() },
+                    onStartVoice = onStartVoice,
+                    onStopVoice = onStopVoice
+                )
             }
 
             // ── Waveform bar ──
@@ -288,6 +315,114 @@ fun ChatInputBar(onSend: (String) -> Unit) {
     }
 }
 
+// ── Push-to-talk bar ────────────────────────────────────────────────────────
+
+@Composable
+fun PushToTalkBar(
+    isPushToTalk: Boolean,
+    isAlwaysOn: Boolean,
+    voiceState: VoiceState,
+    onTogglePushToTalk: () -> Unit,
+    onToggleAlwaysOn: () -> Unit,
+    onStartVoice: () -> Unit,
+    onStopVoice: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Push-to-talk toggle
+        Surface(
+            onClick = onTogglePushToTalk,
+            shape = RoundedCornerShape(20.dp),
+            color = if (isPushToTalk) Color(0xFF238636) else Color(0xFF21262D)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🎤",
+                    fontSize = 16.sp
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (isPushToTalk) "PTT On" else "PTT Off",
+                    color = if (isPushToTalk) Color.White else Color(0xFF8B949E),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        // Always-on toggle
+        Surface(
+            onClick = onToggleAlwaysOn,
+            shape = RoundedCornerShape(20.dp),
+            color = if (isAlwaysOn) Color(0xFF8957E5) else Color(0xFF21262D)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🔊",
+                    fontSize = 16.sp
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (isAlwaysOn) "Always On" else "Always Off",
+                    color = if (isAlwaysOn) Color.White else Color(0xFF8B949E),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        // Manual voice button (hold to talk when PTT is on)
+        if (isPushToTalk) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(
+                        when (voiceState) {
+                            VoiceState.LISTENING -> Color(0xFF58A6FF)
+                            VoiceState.PROCESSING -> Color(0xFFD29922)
+                            VoiceState.SPEAKING -> Color(0xFFA371F7)
+                            else -> Color(0xFFF0883E)
+                        }
+                    )
+                    .clickable {
+                        if (voiceState == VoiceState.IDLE) {
+                            onStartVoice()
+                        } else {
+                            onStopVoice()
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = when (voiceState) {
+                        VoiceState.LISTENING -> "🎙"
+                        VoiceState.PROCESSING -> "⏳"
+                        VoiceState.SPEAKING -> "🔊"
+                        else -> "🎤"
+                    },
+                    fontSize = 24.sp
+                )
+            }
+        }
+    }
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -296,6 +431,7 @@ fun VoiceHeader(
     isConnected: Boolean,
     deviceName: String,
     onOpenSettings: () -> Unit,
+    onOpenDiagnostics: () -> Unit = {},
     onDisconnect: () -> Unit
 ) {
     Row(
@@ -342,8 +478,24 @@ fun VoiceHeader(
             }
         }
 
-        // Right side: settings gear + disconnect
+        // Right side: diagnostics + settings gear + disconnect
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Diagnostics icon
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable { onOpenDiagnostics() }
+                    .background(Color(0xFF21262D)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "🔍",
+                    color = Color(0xFF8B949E),
+                    fontSize = 16.sp
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             // Settings gear icon
             Box(
                 modifier = Modifier

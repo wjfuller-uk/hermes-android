@@ -84,6 +84,25 @@ object RelayClient {
         }
     }
 
+    /** Send a command to the relay (e.g., /voice/start, /voice/stop). */
+    fun sendCommand(method: String, path: String, body: org.json.JSONObject? = null) {
+        val ws = webSocket ?: return
+        if (!isConnected) return
+        try {
+            val requestId = "cmd_${System.currentTimeMillis()}"
+            val message = org.json.JSONObject().apply {
+                put("request_id", requestId)
+                put("method", method)
+                put("path", path)
+                if (body != null) put("body", body)
+            }
+            ws.send(message.toString())
+            AppLogger.i(TAG, "Sent command: $method $path (id=$requestId)")
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "Failed to send command: ${e.message}")
+        }
+    }
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }

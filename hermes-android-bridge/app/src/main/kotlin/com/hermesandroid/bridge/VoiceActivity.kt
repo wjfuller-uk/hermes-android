@@ -61,6 +61,9 @@ class VoiceActivity : ComponentActivity() {
                 onOpenSettings = {
                     startActivity(Intent(this@VoiceActivity, MainActivity::class.java))
                 },
+                onOpenDiagnostics = {
+                    startActivity(Intent(this@VoiceActivity, DiagnosticsActivity::class.java))
+                },
                 onConnect = { url, code ->
                     RelayClient.connect(url, code)
                 },
@@ -70,6 +73,16 @@ class VoiceActivity : ComponentActivity() {
                 onSendText = { text ->
                     viewModel.addMessage(text, isUser = true)
                     RelayClient.sendChat(text)
+                },
+                onStartVoice = {
+                    // Start voice mode via relay
+                    RelayClient.sendCommand("POST", "/voice/start")
+                    viewModel.updateState(VoiceState.LISTENING)
+                },
+                onStopVoice = {
+                    // Stop voice mode via relay
+                    RelayClient.sendCommand("POST", "/voice/stop")
+                    viewModel.updateState(VoiceState.IDLE)
                 }
             )
         }

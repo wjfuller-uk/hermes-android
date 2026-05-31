@@ -63,6 +63,11 @@
             android:exported="false"
             android:theme="@style/Theme.HermesBridge" />
 
+        <activity
+            android:name=".DiagnosticsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.HermesBridge" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
