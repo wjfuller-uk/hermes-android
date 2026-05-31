@@ -45,6 +45,9 @@ object RelayClient {
         private set
 
     @Volatile
+    private var isConnecting: Boolean = false
+
+    @Volatile
     private var shouldReconnect: Boolean = false
 
     var serverUrl: String?
@@ -66,11 +69,18 @@ object RelayClient {
     }
 
     fun connect(serverUrl: String, pairingCode: String) {
+        // Guard against concurrent connects
+        if (isConnected || isConnecting) {
+            AppLogger.w(TAG, "Connect called while already connected/connecting — ignoring")
+            return
+        }
+
         disconnect()
 
         this.serverUrl = serverUrl
         this.pairingCode = pairingCode
         shouldReconnect = true
+        isConnecting = true
 
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         doConnect(serverUrl, pairingCode)
@@ -78,6 +88,7 @@ object RelayClient {
 
     fun disconnect() {
         shouldReconnect = false
+        isConnecting = false
         reconnectJob?.cancel()
         reconnectJob = null
         webSocket?.close(1000, "Client disconnecting")
@@ -130,6 +141,7 @@ object RelayClient {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 AppLogger.i(TAG, "WebSocket connected to ${buildWsUrl(serverUrl, "***")}")
                 isConnected = true
+                isConnecting = false
                 try {
                     BridgeAccessibilityService.instance?.startForeground()
                 } catch (e: SecurityException) {
@@ -159,6 +171,7 @@ object RelayClient {
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 AppLogger.i(TAG, "WebSocket closed: $code $reason")
                 isConnected = false
+                isConnecting = false
                 notifyStatus(false, "Closed: code=$code $reason")
                 scheduleReconnect()
             }
@@ -168,6 +181,7 @@ object RelayClient {
                 val errorDetail = "Error: ${t.javaClass.simpleName}: ${t.message} (HTTP $httpCode)"
                 AppLogger.e(TAG, "WebSocket failure: $errorDetail", t)
                 isConnected = false
+                isConnecting = false
                 notifyStatus(false, errorDetail)
                 scheduleReconnect()
             }

@@ -376,7 +376,7 @@ async def _handle_ws(request: web.Request, state: _RelayState) -> web.WebSocketR
         # Auto-generate from IP + timestamp for backward compat
         device_id = f"device-{remote_ip.replace('.', '-')}-{int(time.time()) % 10000}"
 
-    ws = web.WebSocketResponse(heartbeat=30.0)
+    ws = web.WebSocketResponse(heartbeat=None)
     await ws.prepare(request)
 
     # Register device
