@@ -37,6 +37,7 @@ object RelayClient {
     private var webSocket: WebSocket? = null
     private var scope: CoroutineScope? = null
     private var reconnectJob: Job? = null
+    private var keepaliveJob: Job? = null
     private var prefs: SharedPreferences? = null
 
     @Volatile
@@ -122,6 +123,8 @@ object RelayClient {
     fun disconnect() {
         shouldReconnect = false
         isConnecting = false
+        keepaliveJob?.cancel()
+        keepaliveJob = null
         reconnectJob?.cancel()
         reconnectJob = null
         webSocket?.close(1000, "Client disconnecting")
@@ -174,6 +177,18 @@ object RelayClient {
                 AppLogger.i(TAG, "WebSocket connected to $serverUrl")
                 isConnected = true
                 isConnecting = false
+                // Start client-side keepalive ping (10s interval)
+                keepaliveJob?.cancel()
+                keepaliveJob = scope?.launch {
+                    while (isActive && isConnected) {
+                        delay(10_000)
+                        try {
+                            if (isConnected && webSocket.send("{\"type\":\"ping\"}")) {
+                                // sent ok
+                            }
+                        } catch (_: Exception) { }
+                    }
+                }
                 try {
                     BridgeAccessibilityService.instance?.startForeground()
                 } catch (e: SecurityException) {

@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hermesandroid.bridge.auth.PairingManager
 import com.hermesandroid.bridge.client.RelayClient
+import com.hermesandroid.bridge.service.VoiceService
 import com.hermesandroid.bridge.ui.VoiceAssistantScreen
 import com.hermesandroid.bridge.ui.VoiceViewModel
 import com.hermesandroid.bridge.ui.VoiceState
@@ -79,12 +80,20 @@ class VoiceActivity : ComponentActivity() {
                     RelayClient.sendChat(text)
                 },
                 onStartVoice = {
-                    // Start voice mode via relay
+                    // Start the mic streaming service AND tell the relay
+                    val intent = Intent(this@VoiceActivity, VoiceService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        startService(intent)
+                    }
                     RelayClient.sendCommand("POST", "/voice/start")
                     viewModel.updateState(VoiceState.LISTENING)
                 },
                 onStopVoice = {
-                    // Stop voice mode via relay
+                    // Stop the mic streaming service AND tell the relay
+                    stopService(Intent(this@VoiceActivity, VoiceService::class.java))
                     RelayClient.sendCommand("POST", "/voice/stop")
                     viewModel.updateState(VoiceState.IDLE)
                 }
