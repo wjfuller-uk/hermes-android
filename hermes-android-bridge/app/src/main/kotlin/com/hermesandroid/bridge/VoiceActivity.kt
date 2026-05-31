@@ -17,13 +17,13 @@ class VoiceActivity : ComponentActivity() {
 
         setContent {
             val viewModel: VoiceViewModel = viewModel()
-            viewModel.setConnected(RelayClient.isConnected)
+            viewModel.updateConnection(RelayClient.isConnected)
 
             // Observe connection status
             DisposableEffect(Unit) {
                 val originalCallback = RelayClient.onStatusChanged
                 RelayClient.onStatusChanged = { connected, _ ->
-                    viewModel.setConnected(connected)
+                    viewModel.updateConnection(connected)
                     if (!connected) {
                         // Go back to setup if disconnected
                         finish()

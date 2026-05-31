@@ -45,9 +45,9 @@ class VoiceViewModel : ViewModel() {
     var isConnected by mutableStateOf(false)
         private set
 
-    fun setConnected(connected: Boolean) { isConnected = connected }
+    fun updateConnection(connected: Boolean) { isConnected = connected }
 
-    fun setVoiceState(state: VoiceState) { voiceState = state }
+    fun updateState(state: VoiceState) { voiceState = state }
 
     fun addMessage(text: String, isUser: Boolean) {
         messages = messages + ChatMessage(text = text, isUser = isUser)
