@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hermesandroid.bridge.auth.PairingManager
 import com.hermesandroid.bridge.client.RelayClient
 import com.hermesandroid.bridge.service.VoiceService
+import com.hermesandroid.bridge.widgets.CardData
 import com.hermesandroid.bridge.ui.VoiceAssistantScreen
 import com.hermesandroid.bridge.ui.VoiceViewModel
 import com.hermesandroid.bridge.ui.VoiceState
@@ -61,8 +62,20 @@ class VoiceActivity : ComponentActivity() {
                     }
                     viewModel.updateState(voiceState)
                 }
-                RelayClient.onChatResponse = { text ->
+                RelayClient.onChatResponse = { text, cardsJson ->
                     viewModel.addMessage(text, isUser = false)
+                    // Parse cards from relay response
+                    try {
+                        val gson = com.google.gson.Gson()
+                        val cardsArray = gson.fromJson(cardsJson, Array<Map<String, Any?>>::class.java)
+                        if (cardsArray != null && cardsArray.isNotEmpty()) {
+                            val cards = cardsArray.mapNotNull { cardMap ->
+                                val type = cardMap["type"] as? String ?: return@mapNotNull null
+                                CardData(type = type, data = cardMap["data"])
+                            }
+                            viewModel.addCards(cards)
+                        }
+                    } catch (_: Exception) { }
                     // Speak Hermes response when in voice mode
                     if (isVoiceMode) {
                         speak(text)

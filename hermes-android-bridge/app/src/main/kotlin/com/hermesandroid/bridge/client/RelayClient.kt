@@ -61,7 +61,7 @@ object RelayClient {
     var onVoiceStateChanged: ((state: String) -> Unit)? = null
 
     /** Callback for chat responses from Hermes. Called on main thread. */
-    var onChatResponse: ((text: String) -> Unit)? = null
+    var onChatResponse: ((text: String, cardsJson: String) -> Unit)? = null
 
     /** Callback for speech transcripts (partial and final). Called on main thread. */
     var onTranscript: ((text: String, isFinal: Boolean) -> Unit)? = null
@@ -308,9 +308,11 @@ object RelayClient {
             // Handle chat responses from Hermes
             if (msgType == "chat_response") {
                 val chatText = json.get("text")?.asString ?: ""
+                val cardsJson = json.get("cards")
+                val cardsGson = if (cardsJson != null) gson.toJson(cardsJson) else "[]"
                 if (chatText.isNotBlank()) {
                     AppLogger.i(TAG, "Chat response from Hermes: ${chatText.take(50)}")
-                    notifyChatResponse(chatText)
+                    notifyChatResponse(chatText, cardsGson)
                 }
                 return
             }
@@ -387,11 +389,11 @@ object RelayClient {
         } catch (_: Exception) {}
     }
 
-    private fun notifyChatResponse(text: String) {
+    private fun notifyChatResponse(text: String, cardsJson: String) {
         val callback = onChatResponse ?: return
         try {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                callback(text)
+                callback(text, cardsJson)
             }
         } catch (_: Exception) {}
     }
