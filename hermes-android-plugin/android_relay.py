@@ -248,6 +248,7 @@ async def _serve(state: _RelayState, ready: threading.Event) -> None:
         "/voice/start": "POST", "/voice/stop": "POST",
         "/camera": "GET", "/shell": "POST",
         "/clipboard": "BOTH",
+        "/notify": "POST",
     }
 
     for path, method in ROUTES.items():
@@ -576,6 +577,10 @@ async def _handle_http(
     if not hmac.compare_digest(token.upper(), state.pairing_code.upper()):
         _auth_record_failure(remote_ip)
         return web.json_response({"error": "Unauthorized"}, status=401)
+
+    # Notify route (forward to device)
+    if path == "/notify":
+        pass  # handled below as normal forward
 
     # Voice control routes (handled locally)
     if path == "/voice/start":

@@ -215,9 +215,17 @@ object RelayClient {
             base = "$base:8766"
         }
         val scheme = if (useTls) "wss" else "ws"
-        val deviceId = try { Build.FINGERPRINT } catch (_: Exception) { Build.MODEL }
-        val model = Build.MODEL ?: "unknown"
-        val brand = Build.BRAND ?: "unknown"
+        val deviceId = try {
+            // Use brand-model-serialhash for a URL-safe, readable device ID
+            val serial = (Build.SERIAL ?: Build.HARDWARE).take(8)
+            val id = "${Build.BRAND}-${Build.MODEL}-$serial".replace(" ", "-").lowercase()
+            // URL-encode to be safe
+            java.net.URLEncoder.encode(id, "UTF-8")
+        } catch (_: Exception) {
+            java.net.URLEncoder.encode(Build.MODEL ?: "unknown", "UTF-8")
+        }
+        val model = java.net.URLEncoder.encode(Build.MODEL ?: "unknown", "UTF-8")
+        val brand = java.net.URLEncoder.encode(Build.BRAND ?: "unknown", "UTF-8")
         if (BuildConfig.DEBUG) Log.d(TAG, "Built WebSocket URL: $scheme://$base/ws?token=***&device_id=$deviceId")
         return "$scheme://$base/ws?token=$pairingCode&device_id=$deviceId&model=$model&brand=$brand"
     }

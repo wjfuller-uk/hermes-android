@@ -941,6 +941,47 @@ def android_camera_capture() -> str:
         return json.dumps({"error": str(e)})
 
 
+
+def android_notify(title: str, body: str, channel: str = "hermes") -> str:
+    """
+    Send a push notification to the Android device. Shows as a native notification.
+    Use for reminders, alerts, calendar events, or any message the user should see.
+    """
+    try:
+        data = _post("/notify", {"title": title, "body": body, "channel": channel})
+        return json.dumps(data)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def android_calendar_events(days_ahead: int = 7) -> str:
+    """
+    Get upcoming Google Calendar events for the next N days.
+    Uses the callmebobster1@gmail.com Google account.
+    Returns events with title, date, time, and description.
+    """
+    import subprocess
+    from datetime import datetime, timedelta
+
+    try:
+        since = datetime.now().strftime("%Y-%m-%d")
+        until = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+
+        result = subprocess.run(
+            ["gog", "calendar", "events", "--from", since, "--to", until, "-j"],
+            capture_output=True, text=True, timeout=15,
+            env={**os.environ, "GOG_ACCOUNT": "callmebobster1@gmail.com",
+                 "GOG_KEYRING_PASSWORD": os.environ.get("GOG_KEYRING_PASSWORD", "")},
+        )
+
+        if result.returncode != 0:
+            return json.dumps({"error": f"gog calendar failed: {result.stderr[:200]}"})
+
+        events = json.loads(result.stdout) if result.stdout.strip() else []
+        return json.dumps({"events": events, "count": len(events), "period": f"{since} to {until}"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
 def android_list_devices() -> str:
     """List all connected Android devices. Returns device IDs, models, and connection status."""
     try:
@@ -1588,6 +1629,44 @@ _SCHEMAS = {
             "required": ["command"],
         },
     },
+    "android_calendar_events": {
+        "name": "android_calendar_events",
+        "description": "Get upcoming Google Calendar events. Returns events with title, date, time for the next N days. Use when the user asks about their schedule, upcoming events, or what's on the calendar.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "days_ahead": {
+                    "type": "integer",
+                    "description": "Number of days to look ahead (default 7)",
+                    "default": 7,
+                },
+            },
+            "required": [],
+        },
+    },
+    "android_notify": {
+        "name": "android_notify",
+        "description": "Send a push notification to the Android phone. Shows as a native notification on the device. Use for reminders, alerts, calendar events, or any message the user should see on their phone.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Notification title (bold text)",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Notification body text",
+                },
+                "channel": {
+                    "type": "string",
+                    "description": "Notification channel: hermes (default), reminder, alert, calendar",
+                    "default": "hermes",
+                },
+            },
+            "required": ["title", "body"],
+        },
+    },
     "android_list_devices": {
         "name": "android_list_devices",
         "description": "List all connected Android devices. Returns device IDs, models, brands, and connection status. Use this to see which phones are available before calling android_select_device.",
@@ -1654,6 +1733,8 @@ _HANDLERS = {
     "android_voice_stop": lambda args, **kw: android_voice_stop(),
     "android_camera_capture": lambda args, **kw: android_camera_capture(),
     "android_shell": lambda args, **kw: android_shell(**args),
+    "android_calendar_events": lambda args, **kw: android_calendar_events(**args),
+    "android_notify": lambda args, **kw: android_notify(**args),
     "android_list_devices": lambda args, **kw: android_list_devices(),
     "android_select_device": lambda args, **kw: android_select_device(**args),
 }
