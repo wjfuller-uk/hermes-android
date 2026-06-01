@@ -26,6 +26,9 @@ class VoiceActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Initialize crash reporter — sends crash logs to relay server
+        com.hermesandroid.bridge.util.CrashReporter.init(application, RelayClient.serverUrl)
+
         // Request all permissions on first launch — voice, camera, notifications, etc.
         PermissionHelper.requestAllPermissions(this)
 
