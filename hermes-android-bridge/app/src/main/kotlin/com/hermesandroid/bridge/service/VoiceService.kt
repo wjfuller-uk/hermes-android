@@ -57,6 +57,10 @@ class VoiceService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var recognizerIntent: Intent? = null
 
+    // Track latest partial for force-finalization when onResults() never fires
+    private var lastPartial: String = ""
+    private var endOfSpeechJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -119,6 +123,8 @@ class VoiceService : Service() {
     private fun stopListening() {
         val wasRunning = isRunning
         isRunning = false
+        endOfSpeechJob?.cancel()
+        endOfSpeechJob = null
         // Tell relay to stop voice pipeline (process buffered audio if PCM)
         if (wasRunning) {
             try {
@@ -252,7 +258,24 @@ class VoiceService : Service() {
         override fun onBufferReceived(buffer: ByteArray?) {}
 
         override fun onEndOfSpeech() {
-            AppLogger.d(TAG, "Speech ended")
+            AppLogger.d(TAG, "Speech ended — waiting for final result or timeout")
+            // SpeechRecognizer on LineageOS often fires onEndOfSpeech but never onResults.
+            // Force-finalize: stop the recognizer to trigger onResults, AND set a
+            // 3s backup timer that sends the last partial as final if onResults never fires.
+            try { speechRecognizer?.stopListening() } catch (_: Exception) { }
+            endOfSpeechJob?.cancel()
+            endOfSpeechJob = scope.launch {
+                delay(3000)
+                if (isRunning && lastPartial.isNotBlank()) {
+                    AppLogger.i(TAG, "Force-finalizing after timeout: $lastPartial")
+                    RelayClient.notifyTranscript(lastPartial, isFinal = true)
+                    if (RelayClient.isConnected) {
+                        RelayClient.sendChat(lastPartial)
+                    }
+                    lastPartial = ""
+                    stopSelf()
+                }
+            }
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
@@ -261,18 +284,21 @@ class VoiceService : Service() {
                 ?: return
             if (matches.isEmpty()) return
             val text = matches[0]
+            lastPartial = text  // save for force-finalization
             AppLogger.d(TAG, "Partial: $text")
             // Show live transcript in UI
             RelayClient.notifyTranscript(text, isFinal = false)
         }
 
         override fun onResults(results: Bundle?) {
+            endOfSpeechJob?.cancel()  // cancel force-finalize timer — we got a real result
             val matches = results
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?: return
             if (matches.isEmpty()) return
             val text = matches[0]
             AppLogger.i(TAG, "Final: $text")
+            lastPartial = ""
 
             // Show final transcript
             RelayClient.notifyTranscript(text, isFinal = true)
