@@ -27,11 +27,12 @@ object RelayClient {
     private const val PREFS_NAME = "hermes_bridge_prefs"
     private const val KEY_SERVER_URL = "relay_server_url"
     private const val MAX_BACKOFF_MS = 30_000L
-    private const val MAX_RETRIES = 5
+    private const val MAX_RETRIES = 20  // high enough to survive dev relay restarts
 
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
-        .pingInterval(java.time.Duration.ofSeconds(20))
+        .pingInterval(java.time.Duration.ofSeconds(5))  // WebSocket PING every 5s — keeps Tailscale DERP alive
+        .socketFactory(TcpKeepaliveSocketFactory())       // TCP keepalive at OS level
         .build()
 
     private var webSocket: WebSocket? = null
@@ -187,7 +188,7 @@ object RelayClient {
                 keepaliveJob?.cancel()
                 keepaliveJob = scope?.launch {
                     while (isActive && isConnected) {
-                        delay(10_000)
+                        delay(5_000)
                         try {
                             if (isConnected && webSocket.send("{\"type\":\"ping\"}")) {
                                 // sent ok
