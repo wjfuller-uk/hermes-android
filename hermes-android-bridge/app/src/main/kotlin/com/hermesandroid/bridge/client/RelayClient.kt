@@ -32,7 +32,6 @@ object RelayClient {
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
         .pingInterval(java.time.Duration.ofSeconds(5))  // WebSocket PING every 5s — keeps Tailscale DERP alive
-        .socketFactory(TcpKeepaliveSocketFactory())       // TCP keepalive at OS level
         .build()
 
     private var webSocket: WebSocket? = null
