@@ -26,8 +26,8 @@ class TcpKeepaliveSocketFactory : SocketFactory() {
         return Socket(host, port).apply { enableKeepalive() }
     }
 
-    override fun createSocket(host: String, port: Int, localHost: String, localPort: Int): Socket {
-        return Socket(host, port, localHost, localPort).apply { enableKeepalive() }
+    override fun createSocket(host: String, port: Int, localAddr: java.net.InetAddress, localPort: Int): Socket {
+        return Socket(host, port, localAddr, localPort).apply { enableKeepalive() }
     }
 
     override fun createSocket(inetAddress: java.net.InetAddress, port: Int): Socket {
