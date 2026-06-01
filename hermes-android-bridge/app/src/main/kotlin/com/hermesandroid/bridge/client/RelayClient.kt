@@ -429,15 +429,21 @@ object RelayClient {
         val ctx = appContext ?: return
         try {
             val intent = android.content.Intent(ctx, com.hermesandroid.bridge.service.RelayConnectionService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                ctx.startForegroundService(intent)
-            } else {
-                @Suppress("DEPRECATION")
-                ctx.startService(intent)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        ctx.startForegroundService(intent)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        ctx.startService(intent)
+                    }
+                    AppLogger.i(TAG, "ConnectionService started — app can be backgrounded safely")
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Failed to start ConnectionService: ${e.message}")
+                }
             }
-            AppLogger.i(TAG, "ConnectionService started — app can be backgrounded safely")
         } catch (e: Exception) {
-            AppLogger.w(TAG, "Failed to start ConnectionService: ${e.message}")
+            AppLogger.w(TAG, "Failed to post ConnectionService start: ${e.message}")
         }
     }
 
