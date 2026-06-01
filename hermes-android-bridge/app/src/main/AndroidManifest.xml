@@ -108,11 +108,5 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <!-- Connection service: keeps WebSocket alive when app is backgrounded -->
-        <service
-            android:name=".service.RelayConnectionService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
     </application>
 </manifest>

@@ -39,7 +39,6 @@ object RelayClient {
     private var reconnectJob: Job? = null
     private var keepaliveJob: Job? = null
     private var prefs: SharedPreferences? = null
-    private var appContext: android.content.Context? = null
 
     @Volatile
     var isConnected: Boolean = false
@@ -108,7 +107,6 @@ object RelayClient {
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        appContext = context.applicationContext
     }
 
     fun connect(serverUrl: String) {
@@ -141,7 +139,6 @@ object RelayClient {
         scope = null
         isConnected = false
         BridgeAccessibilityService.instance?.stopForeground()
-        stopConnectionService()
         notifyStatus(false, "Disconnected")
     }
 
@@ -203,8 +200,6 @@ object RelayClient {
                 } catch (e: SecurityException) {
                     AppLogger.w(TAG, "Could not promote bridge service to foreground", e)
                 }
-                // Start foreground service to keep connection alive in background
-                startConnectionService()
                 notifyStatus(true, "Connected to $serverUrl")
             }
 
@@ -420,39 +415,6 @@ object RelayClient {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 callback(message, isError)
             }
-        } catch (_: Exception) {}
-    }
-
-    // ── Foreground service for background persistence ────────────────────
-
-    private fun startConnectionService() {
-        val ctx = appContext ?: return
-        try {
-            val intent = android.content.Intent(ctx, com.hermesandroid.bridge.service.RelayConnectionService::class.java)
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                try {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        ctx.startForegroundService(intent)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        ctx.startService(intent)
-                    }
-                    AppLogger.i(TAG, "ConnectionService started — app can be backgrounded safely")
-                } catch (e: Exception) {
-                    AppLogger.w(TAG, "Failed to start ConnectionService: ${e.message}")
-                }
-            }
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "Failed to post ConnectionService start: ${e.message}")
-        }
-    }
-
-    private fun stopConnectionService() {
-        val ctx = appContext ?: return
-        try {
-            val intent = android.content.Intent(ctx, com.hermesandroid.bridge.service.RelayConnectionService::class.java)
-            ctx.stopService(intent)
-            AppLogger.i(TAG, "ConnectionService stopped")
         } catch (_: Exception) {}
     }
 }
