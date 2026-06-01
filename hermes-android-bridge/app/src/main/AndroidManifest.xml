@@ -18,6 +18,7 @@
     <!-- Push notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Camera: photo capture for vision -->
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Camera hardware (optional — phone still works without it) -->
@@ -107,6 +108,12 @@
             android:name=".service.VoiceService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Connection service: keeps WebSocket alive in background for hands-free use -->
+        <service
+            android:name=".service.RelayConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 </manifest>

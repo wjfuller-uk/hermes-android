@@ -55,6 +55,11 @@ class VoiceActivity : ComponentActivity() {
 
                 RelayClient.onStatusChanged = { connected, message ->
                     viewModel.updateConnection(connected)
+                    if (connected) {
+                        com.hermesandroid.bridge.service.RelayConnectionService.start(this@VoiceActivity)
+                    } else {
+                        com.hermesandroid.bridge.service.RelayConnectionService.stop(this@VoiceActivity)
+                    }
                 }
                 RelayClient.onVoiceStateChanged = { state ->
                     val voiceState = when (state) {
@@ -117,9 +122,12 @@ class VoiceActivity : ComponentActivity() {
                 },
                 onConnect = { url ->
                     RelayClient.connect(url)
+                    // Start foreground service to keep connection alive in background
+                    com.hermesandroid.bridge.service.RelayConnectionService.start(this@VoiceActivity)
                 },
                 onDisconnect = {
                     RelayClient.disconnect()
+                    com.hermesandroid.bridge.service.RelayConnectionService.stop(this@VoiceActivity)
                 },
                 onSendText = { text ->
                     viewModel.addMessage(text, isUser = true)
