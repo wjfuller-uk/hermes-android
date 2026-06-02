@@ -3,7 +3,6 @@ package com.hermesandroid.bridge
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
@@ -15,11 +14,14 @@ import com.hermesandroid.bridge.ui.VoiceAssistantScreen
 import com.hermesandroid.bridge.ui.VoiceViewModel
 import com.hermesandroid.bridge.ui.VoiceState
 import com.hermesandroid.bridge.util.PermissionHelper
-import java.util.*
 
+/**
+ * Main voice assistant Activity. Handles the push-to-talk flow:
+ * tap mic → VoiceService streams PCM to relay → relay processes via Hermes STT+TTS
+ * → TTS audio comes back as binary WebSocket frames → AudioPlayer plays it.
+ */
 class VoiceActivity : ComponentActivity() {
 
-    private var tts: TextToSpeech? = null
     private var isVoiceMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,10 +33,7 @@ class VoiceActivity : ComponentActivity() {
         // Request all permissions on first launch — voice, camera, notifications, etc.
         PermissionHelper.requestAllPermissions(this)
 
-        // Initialize TTS for speaking Hermes responses
-        initTts()
-
-        // Auto-connect if we have saved credentials and aren't already connected
+        // Auto-connect if we aren't already connected
         if (!RelayClient.isConnected) {
             RelayClient.autoConnect()
         }
@@ -84,12 +83,7 @@ class VoiceActivity : ComponentActivity() {
                             viewModel.addCards(cards)
                         }
                     } catch (_: Exception) { }
-                    // Speak Hermes response when in voice mode
-                    if (isVoiceMode) {
-                        speak(text)
-                        isVoiceMode = false  // One-shot: reset after speaking
-                    }
-                    // Return to idle after response
+                    // Return to idle after response (TTS is handled server-side, AudioPlayer plays it)
                     viewModel.updateState(VoiceState.IDLE)
                 }
                 RelayClient.onTranscript = { text, isFinal ->
@@ -99,7 +93,6 @@ class VoiceActivity : ComponentActivity() {
                     if (isError) {
                         android.widget.Toast.makeText(this@VoiceActivity, message, android.widget.Toast.LENGTH_LONG).show()
                     }
-                    // Non-error status messages just flow to the status footer
                     viewModel.voiceStatusMessage = message
                 }
                 onDispose {
@@ -150,29 +143,7 @@ class VoiceActivity : ComponentActivity() {
         }
     }
 
-    private fun initTts() {
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.UK
-                tts?.setSpeechRate(1.0f)
-            }
-        }
-    }
-
-    private fun speak(text: String) {
-        tts?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                it.speak(text, TextToSpeech.QUEUE_FLUSH, null, "hermes_tts_${System.currentTimeMillis()}")
-            } else {
-                @Suppress("DEPRECATION")
-                it.speak(text, TextToSpeech.QUEUE_FLUSH, null)
-            }
-        }
-    }
-
     override fun onDestroy() {
-        tts?.stop()
-        tts?.shutdown()
         super.onDestroy()
     }
 }

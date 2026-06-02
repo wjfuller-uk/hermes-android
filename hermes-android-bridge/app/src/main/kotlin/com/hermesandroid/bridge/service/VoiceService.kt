@@ -10,26 +10,21 @@ import android.content.Intent
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.os.Build
-import android.os.Bundle
 import android.os.IBinder
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import com.hermesandroid.bridge.MainActivity
 import com.hermesandroid.bridge.client.RelayClient
 import com.hermesandroid.bridge.util.AppLogger
 import kotlinx.coroutines.*
 
 /**
- * Foreground service that captures speech via on-device SpeechRecognizer
- * and streams transcripts to the UI in real time.
+ * Foreground service that captures raw PCM audio from the mic and streams it
+ * to the relay server. The relay handles ALL processing — VAD, STT (Hermes
+ * transcribe_audio), agent dialogue, and TTS (Hermes text_to_speech_tool).
  *
- * Architecture (v2 — on-device STT):
- *   Mic → SpeechRecognizer → partial transcripts → RelayClient.onTranscript (UI)
- *                         → final transcript → RelayClient.sendChat() → Hermes
+ * The phone is just a thin pipe: mic → PCM → WebSocket → relay → TTS audio → speaker.
  *
- * Falls back to raw PCM streaming if SpeechRecognizer is unavailable.
+ * Auto-stops after 10 seconds to trigger relay-side processing (force_stop).
+ * One utterance per mic tap.
  */
 class VoiceService : Service() {
 
@@ -38,7 +33,7 @@ class VoiceService : Service() {
         const val CHANNEL_ID = "hermes_voice_channel"
         const val NOTIFICATION_ID = 2001
 
-        // Audio format for PCM fallback
+        // Audio format: raw PCM 16-bit signed, little-endian, 16kHz, mono
         const val SAMPLE_RATE = 16000
         const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
@@ -51,15 +46,9 @@ class VoiceService : Service() {
             private set
     }
 
-    private var speechRecognizer: SpeechRecognizer? = null
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var recognizerIntent: Intent? = null
-
-    // Track latest partial for force-finalization when onResults() never fires
-    private var lastPartial: String = ""
-    private var endOfSpeechJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -71,7 +60,7 @@ class VoiceService : Service() {
         val notification = buildNotification()
         startForeground(NOTIFICATION_ID, notification)
         startListening()
-        AppLogger.i(TAG, "VoiceService started — on-device speech recognition")
+        AppLogger.i(TAG, "VoiceService started — PCM audio streaming to relay")
         return START_STICKY
     }
 
@@ -85,94 +74,9 @@ class VoiceService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ── Speech recognition (primary path) ──────────────────────────────────
+    // ── PCM capture ─────────────────────────────────────────────────────────
 
     private fun startListening() {
-        if (isRunning) return
-
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            AppLogger.w(TAG, "SpeechRecognizer not available — falling back to PCM streaming")
-            RelayClient.notifyVoiceStatus("On-device speech not available — using server transcription", isError = false)
-            fallbackToRawAudio()
-            return
-        }
-
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        speechRecognizer?.setRecognitionListener(VoiceRecognitionListener())
-
-        recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-GB")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800)
-            // Prefer on-device recognition (no network)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        }
-
-        try {
-            speechRecognizer?.startListening(recognizerIntent)
-            isRunning = true
-            AppLogger.i(TAG, "SpeechRecognizer started — listening for speech")
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "SpeechRecognizer failed to start: ${e.message}", e)
-            fallbackToRawAudio()
-        }
-    }
-
-    private fun stopListening() {
-        val wasRunning = isRunning
-        isRunning = false
-        endOfSpeechJob?.cancel()
-        endOfSpeechJob = null
-        // Tell relay to stop voice pipeline (process buffered audio if PCM)
-        if (wasRunning) {
-            try {
-                if (RelayClient.isConnected) {
-                    RelayClient.sendCommand("POST", "/voice/stop")
-                }
-            } catch (_: Exception) { }
-        }
-        try {
-            speechRecognizer?.stopListening()
-            speechRecognizer?.destroy()
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "Error stopping SpeechRecognizer: ${e.message}")
-        }
-        speechRecognizer = null
-        stopRawAudio()
-    }
-
-    private fun restartListening() {
-        if (!isRunning) return
-        try {
-            speechRecognizer?.startListening(recognizerIntent)
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "Error restarting SpeechRecognizer: ${e.message}")
-            restartListeningDelayed()
-        }
-    }
-
-    private fun restartListeningDelayed(delayMs: Long = 500) {
-        scope.launch {
-            delay(delayMs)
-            if (isRunning) {
-                try {
-                    speechRecognizer?.startListening(recognizerIntent)
-                } catch (_: Exception) { }
-            }
-        }
-    }
-
-    // ── Fallback: raw PCM streaming (when SpeechRecognizer unavailable) ────
-
-    private fun fallbackToRawAudio() {
-        AppLogger.i(TAG, "Switching to raw PCM audio streaming fallback")
-        stopListening() // clean up any partial SpeechRecognizer state
-        startRawAudio()
-    }
-
-    private fun startRawAudio() {
         if (isRunning) return
 
         val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
@@ -191,17 +95,18 @@ class VoiceService : Service() {
             audioRecord?.startRecording()
             isRunning = true
 
-            // Auto-stop after 10 seconds — trigger relay processing
+            // Auto-stop after 10 seconds — triggers relay-side force_stop
             scope.launch {
                 delay(10_000)
                 if (isRunning) {
                     AppLogger.i(TAG, "PCM auto-stop after 10s — triggering relay processing")
                     RelayClient.sendCommand("POST", "/voice/stop")
-                    delay(200) // let the command arrive before stopping
+                    delay(200)
                     stopSelf()
                 }
             }
 
+            // Stream PCM frames to relay via binary WebSocket frames
             captureJob = scope.launch {
                 val buffer = ByteArray(FRAME_BYTES)
                 while (isActive && isRunning) {
@@ -218,11 +123,11 @@ class VoiceService : Service() {
                     }
                 }
             }
-            AppLogger.i(TAG, "PCM audio streaming started")
-            RelayClient.notifyVoiceStatus("Mic streaming to server — speak now", isError = false)
+            AppLogger.i(TAG, "PCM audio streaming started (${bufferSize}B buffer)")
+            RelayClient.notifyVoiceStatus("Mic streaming to relay — speak now", isError = false)
         } catch (e: SecurityException) {
             AppLogger.e(TAG, "Microphone permission denied", e)
-            RelayClient.notifyVoiceStatus("Microphone permission denied — grant in Settings", isError = true)
+            RelayClient.notifyVoiceStatus("Microphone permission denied", isError = true)
             stopSelf()
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to start audio capture", e)
@@ -231,136 +136,37 @@ class VoiceService : Service() {
         }
     }
 
-    private fun stopRawAudio() {
+    private fun stopListening() {
+        val wasRunning = isRunning
+        isRunning = false
+
         captureJob?.cancel()
         captureJob = null
+
         try { audioRecord?.stop() } catch (_: Exception) { }
         audioRecord?.release()
         audioRecord = null
-    }
 
-    // ── Recognition listener ───────────────────────────────────────────────
-
-    inner class VoiceRecognitionListener : RecognitionListener {
-
-        override fun onReadyForSpeech(params: Bundle?) {
-            AppLogger.d(TAG, "Ready for speech")
-        }
-
-        override fun onBeginningOfSpeech() {
-            AppLogger.d(TAG, "Speech started")
-        }
-
-        override fun onRmsChanged(rmsdB: Float) {
-            // Could update mic level UI here
-        }
-
-        override fun onBufferReceived(buffer: ByteArray?) {}
-
-        override fun onEndOfSpeech() {
-            AppLogger.d(TAG, "Speech ended — waiting for final result or timeout")
-            // SpeechRecognizer on LineageOS often fires onEndOfSpeech but never onResults.
-            // Force-finalize: stop the recognizer to trigger onResults, AND set a
-            // 3s backup timer that sends the last partial as final if onResults never fires.
-            try { speechRecognizer?.stopListening() } catch (_: Exception) { }
-            endOfSpeechJob?.cancel()
-            endOfSpeechJob = scope.launch {
-                delay(3000)
-                if (isRunning && lastPartial.isNotBlank()) {
-                    AppLogger.i(TAG, "Force-finalizing after timeout: $lastPartial")
-                    RelayClient.notifyTranscript(lastPartial, isFinal = true)
-                    if (RelayClient.isConnected) {
-                        RelayClient.sendChat(lastPartial)
-                    }
-                    lastPartial = ""
-                    stopSelf()
+        // Tell relay to process buffered audio
+        if (wasRunning) {
+            try {
+                if (RelayClient.isConnected) {
+                    RelayClient.sendCommand("POST", "/voice/stop")
                 }
-            }
+            } catch (_: Exception) { }
         }
-
-        override fun onPartialResults(partialResults: Bundle?) {
-            val matches = partialResults
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?: return
-            if (matches.isEmpty()) return
-            val text = matches[0]
-            lastPartial = text  // save for force-finalization
-            AppLogger.d(TAG, "Partial: $text")
-            // Show live transcript in UI
-            RelayClient.notifyTranscript(text, isFinal = false)
-        }
-
-        override fun onResults(results: Bundle?) {
-            endOfSpeechJob?.cancel()  // cancel force-finalize timer — we got a real result
-            val matches = results
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?: return
-            if (matches.isEmpty()) return
-            val text = matches[0]
-            AppLogger.i(TAG, "Final: $text")
-            lastPartial = ""
-
-            // Show final transcript
-            RelayClient.notifyTranscript(text, isFinal = true)
-
-            // Send to Hermes
-            if (text.isNotBlank() && RelayClient.isConnected) {
-                RelayClient.sendChat(text)
-            }
-
-            // Auto-stop service after sending — one utterance per mic tap.
-            // The service's onDestroy will clean up the recognizer.
-            stopSelf()
-        }
-
-        override fun onError(error: Int) {
-            val errorMsg = when (error) {
-                SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-                SpeechRecognizer.ERROR_CLIENT -> "Client error"
-                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Missing permissions"
-                SpeechRecognizer.ERROR_NETWORK -> "Network error"
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                SpeechRecognizer.ERROR_NO_MATCH -> "No speech match"
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognizer busy"
-                SpeechRecognizer.ERROR_SERVER -> "Server error"
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
-                else -> "Unknown error ($error)"
-            }
-            AppLogger.w(TAG, "SpeechRecognizer error: $errorMsg")
-
-            when (error) {
-                SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                    // No speech — just restart
-                    restartListening()
-                }
-                SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                SpeechRecognizer.ERROR_SERVER -> {
-                    // Network/server issues — fall back to raw audio
-                    AppLogger.w(TAG, "SpeechRecognizer network error, falling back to PCM")
-                    fallbackToRawAudio()
-                }
-                else -> {
-                    // Other errors — retry after delay
-                    restartListeningDelayed(2000)
-                }
-            }
-        }
-
-        override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
     // ── Notification ───────────────────────────────────────────────────────
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Hermes Voice",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Speech recognition active for Hermes"
+                description = "Microphone active for Hermes voice"
                 setShowBadge(false)
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -374,7 +180,7 @@ class VoiceService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("Hermes listening...")
                 .setContentText("Speak to interact")
