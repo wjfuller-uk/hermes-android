@@ -308,7 +308,6 @@ fun VoiceAssistantScreen(
     viewModel: VoiceViewModel = viewModel(),
     onOpenSettings: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
-    onConnect: (url: String) -> Unit = {},
     onDisconnect: () -> Unit = {},
     onSendText: (String) -> Unit = {},
     onStartVoice: () -> Unit = {},
@@ -345,7 +344,7 @@ fun VoiceAssistantScreen(
 
             // ── Connection UI ──
             if (!viewModel.isConnected) {
-                ConnectionPanel(onConnect = onConnect)
+                AutoConnectingPanel()
             }
 
             // ── Messages feed ──
@@ -412,13 +411,20 @@ fun VoiceAssistantScreen(
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Connection panel
-// ═══════════════════════════════════════════════════════════════════════════════
+// Auto-connecting panel — no user input, just shows connection is in progress
 
 @Composable
-fun ConnectionPanel(onConnect: (url: String) -> Unit) {
-    var serverUrl by remember { mutableStateOf(RelayClient.serverUrl ?: "ws://100.111.44.87:8766") }
+fun AutoConnectingPanel() {
+    val infiniteTransition = rememberInfiniteTransition(label = "connecting")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
 
     Surface(
         modifier = Modifier
@@ -428,45 +434,27 @@ fun ConnectionPanel(onConnect: (url: String) -> Unit) {
         color = Surface
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("⬡", fontSize = 24.sp, color = Accent)
+                Text("\u2B21", fontSize = 24.sp, color = Accent)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Connect to Hermes",
-                    color = Text1,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
+                    "Connecting to Hermes",
+                    color = Text1.copy(alpha = alpha),
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp
                 )
             }
-            OutlinedTextField(
-                value = serverUrl,
-                onValueChange = { serverUrl = it },
-                placeholder = { Text("ws://100.111.44.87:8766", color = Text3) },
-                label = { Text("Server URL", color = Text2) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Text1,
-                    unfocusedTextColor = Text1,
-                    focusedBorderColor = Accent,
-                    unfocusedBorderColor = Border,
-                    cursorColor = Accent
-                )
+            Text(
+                "No setup needed \u2014 Tailscale handles everything",
+                color = Text3,
+                fontSize = 12.sp
             )
-            Button(
-                onClick = {
-                    if (serverUrl.isNotBlank()) onConnect(serverUrl.trim())
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Connect", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
         }
     }
 }

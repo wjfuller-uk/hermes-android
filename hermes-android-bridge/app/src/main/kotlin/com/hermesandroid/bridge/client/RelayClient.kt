@@ -20,12 +20,19 @@ import okhttp3.*
  * and sends results back.
  *
  * Auto-reconnects on disconnect with exponential backoff (1s, 2s, 4s, 8s, max 30s).
+ *
+ * Server URL is hardcoded — Tailscale provides auth, no user config needed.
  */
 object RelayClient {
 
     private const val TAG = "RelayClient"
     private const val PREFS_NAME = "hermes_bridge_prefs"
-    private const val KEY_SERVER_URL = "relay_server_url"
+
+    // Hardcoded VPS Tailscale IP — open app and it connects, no setup needed
+    private const val DEFAULT_SERVER_URL = "ws://100.111.44.87:8766"
+    // Dummy token — relay ignores it (Tailscale is the auth layer)
+    private const val DEFAULT_TOKEN = "hermes"
+
     private const val MAX_BACKOFF_MS = 30_000L
     private const val MAX_RETRIES = 20  // high enough to survive dev relay restarts
 
@@ -49,10 +56,6 @@ object RelayClient {
 
     @Volatile
     private var shouldReconnect: Boolean = false
-
-    var serverUrl: String?
-        get() = prefs?.getString(KEY_SERVER_URL, null)
-        set(value) { prefs?.edit()?.putString(KEY_SERVER_URL, value)?.apply() }
 
     /** Callback for UI updates. Called on main thread. */
     var onStatusChanged: ((connected: Boolean, message: String) -> Unit)? = null
@@ -109,7 +112,8 @@ object RelayClient {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    fun connect(serverUrl: String) {
+    /** Connect to the hardcoded relay server. Auto-reconnects on disconnect. */
+    fun connect() {
         // Guard against concurrent connects
         if (isConnected || isConnecting) {
             AppLogger.w(TAG, "Connect called while already connected/connecting — ignoring")
@@ -118,12 +122,11 @@ object RelayClient {
 
         disconnect()
 
-        this.serverUrl = serverUrl
         shouldReconnect = true
         isConnecting = true
 
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        doConnect(serverUrl)
+        doConnect()
     }
 
     fun disconnect() {
@@ -142,12 +145,11 @@ object RelayClient {
         notifyStatus(false, "Disconnected")
     }
 
-    /** Try to auto-connect if server URL was previously saved. */
+    /** Auto-connect on app start — always tries (URL is hardcoded). */
     fun autoConnect() {
-        val url = serverUrl
-        if (!url.isNullOrBlank()) {
-            AppLogger.i(TAG, "Auto-connecting to $url")
-            connect(url)
+        if (!isConnected && !isConnecting) {
+            AppLogger.i(TAG, "Auto-connecting to $DEFAULT_SERVER_URL")
+            connect()
         }
     }
 
@@ -168,10 +170,10 @@ object RelayClient {
         }
     }
 
-    private fun doConnect(serverUrl: String) {
-        val wsUrl = buildWsUrl(serverUrl)
-        AppLogger.i(TAG, "Connecting to $wsUrl")
-        notifyStatus(false, "Connecting to $wsUrl ...")
+    private fun doConnect() {
+        val wsUrl = buildWsUrl()
+        AppLogger.i(TAG, "Connecting to $DEFAULT_SERVER_URL")
+        notifyStatus(false, "Connecting to Hermes...")
 
         val request = Request.Builder()
             .url(wsUrl)
@@ -180,10 +182,10 @@ object RelayClient {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                AppLogger.i(TAG, "WebSocket connected to $serverUrl")
+                AppLogger.i(TAG, "WebSocket connected")
                 isConnected = true
                 isConnecting = false
-                // Start client-side keepalive ping (10s interval)
+                // Start client-side keepalive ping (5s interval)
                 keepaliveJob?.cancel()
                 keepaliveJob = scope?.launch {
                     while (isActive && isConnected) {
@@ -200,7 +202,7 @@ object RelayClient {
                 } catch (e: SecurityException) {
                     AppLogger.w(TAG, "Could not promote bridge service to foreground", e)
                 }
-                notifyStatus(true, "Connected to $serverUrl")
+                notifyStatus(true, "Connected to $DEFAULT_SERVER_URL")
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -243,7 +245,6 @@ object RelayClient {
 
     private fun scheduleReconnect() {
         if (!shouldReconnect) return
-        val url = serverUrl ?: return
 
         reconnectJob?.cancel()
         reconnectJob = scope?.launch {
@@ -255,7 +256,7 @@ object RelayClient {
                 notifyStatus(false, "Reconnecting in ${backoff / 1000}s... (attempt $retries/$MAX_RETRIES)")
                 delay(backoff)
                 if (shouldReconnect && !isConnected) {
-                    doConnect(url)
+                    doConnect()
                     delay(3000)
                     if (!isConnected) {
                         backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF_MS)
@@ -265,14 +266,14 @@ object RelayClient {
                 }
             }
             if (!isConnected && retries >= MAX_RETRIES) {
-                notifyStatus(false, "Failed to connect after $MAX_RETRIES attempts. Tap Connect to retry.")
+                notifyStatus(false, "Failed to connect after $MAX_RETRIES attempts.")
                 shouldReconnect = false
             }
         }
     }
 
-    private fun buildWsUrl(serverUrl: String): String {
-        val trimmed = serverUrl.trim().trimEnd('/')
+    private fun buildWsUrl(): String {
+        val trimmed = DEFAULT_SERVER_URL.trim().trimEnd('/')
         val useTls = trimmed.startsWith("https://") || trimmed.startsWith("wss://")
         var base = trimmed
             .removePrefix("http://").removePrefix("https://")
@@ -282,19 +283,16 @@ object RelayClient {
         }
         val scheme = if (useTls) "wss" else "ws"
         val deviceId = try {
-            // Use brand-model-serialhash for a URL-safe, readable device ID
             val serial = (Build.SERIAL ?: Build.HARDWARE).take(8)
             val id = "${Build.BRAND}-${Build.MODEL}-$serial".replace(" ", "-").lowercase()
-            // URL-encode to be safe
             java.net.URLEncoder.encode(id, "UTF-8")
         } catch (_: Exception) {
             java.net.URLEncoder.encode(Build.MODEL ?: "unknown", "UTF-8")
         }
         val model = java.net.URLEncoder.encode(Build.MODEL ?: "unknown", "UTF-8")
         val brand = java.net.URLEncoder.encode(Build.BRAND ?: "unknown", "UTF-8")
-        // Token is just "hermes" — relay no longer validates it (Tailscale auth)
         if (BuildConfig.DEBUG) Log.d(TAG, "Built WebSocket URL: $scheme://$base/ws?device_id=$deviceId")
-        return "$scheme://$base/ws?token=hermes&device_id=$deviceId&model=$model&brand=$brand"
+        return "$scheme://$base/ws?token=$DEFAULT_TOKEN&device_id=$deviceId&model=$model&brand=$brand"
     }
 
     private suspend fun handleMessage(ws: WebSocket, text: String) {

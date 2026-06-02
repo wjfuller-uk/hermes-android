@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.hermesandroid.bridge.auth.PairingManager
 import com.hermesandroid.bridge.client.RelayClient
 import com.hermesandroid.bridge.service.VoiceService
 import com.hermesandroid.bridge.widgets.CardData
@@ -27,7 +26,7 @@ class VoiceActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // Initialize crash reporter — sends crash logs to relay server
-        com.hermesandroid.bridge.util.CrashReporter.init(application, RelayClient.serverUrl)
+        com.hermesandroid.bridge.util.CrashReporter.init(application, "ws://100.111.44.87:8766")
 
         // Request all permissions on first launch — voice, camera, notifications, etc.
         PermissionHelper.requestAllPermissions(this)
@@ -119,11 +118,6 @@ class VoiceActivity : ComponentActivity() {
                 },
                 onOpenDiagnostics = {
                     startActivity(Intent(this@VoiceActivity, DiagnosticsActivity::class.java))
-                },
-                onConnect = { url ->
-                    RelayClient.connect(url)
-                    // Start foreground service to keep connection alive in background
-                    com.hermesandroid.bridge.service.RelayConnectionService.start(this@VoiceActivity)
                 },
                 onDisconnect = {
                     RelayClient.disconnect()
