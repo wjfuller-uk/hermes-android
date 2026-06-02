@@ -222,7 +222,7 @@ fun collectDiagnostics(context: Context): List<DiagnosticItem> {
     // ── Connection ──
     items.add(DiagnosticItem("Connection", "Relay Connected", if (RelayClient.isConnected) "Yes" else "No",
         if (RelayClient.isConnected) Status.OK else Status.ERROR))
-    items.add(DiagnosticItem("Connection", "Server URL", RelayClient.serverUrl ?: "not set"))
+    items.add(DiagnosticItem("Connection", "Server URL", "ws://100.111.44.87:8766"))
     items.add(DiagnosticItem("Connection", "Auth", "auto (Tailscale)"))
 
     // ── Permissions ──

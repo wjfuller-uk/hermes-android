@@ -175,14 +175,14 @@ class MainActivity : Activity() {
     }
 
     private fun setupRelayConnection() {
-        val savedUrl = RelayClient.serverUrl
+        val savedUrl = "ws://100.111.44.87:8766"
         if (!savedUrl.isNullOrBlank()) {
             etServerUrl.setText(savedUrl)
         }
 
         RelayClient.onStatusChanged = { connected, message ->
             if (connected) {
-                AppLogger.i("MainActivity", "Relay connected: ${RelayClient.serverUrl}")
+                AppLogger.i("MainActivity", "Relay connected: ${"ws://100.111.44.87:8766"}")
             } else {
                 AppLogger.w("MainActivity", "Relay disconnected: $message")
             }
@@ -209,7 +209,7 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Enter a server URL", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            RelayClient.connect(url)
+            RelayClient.connect()
         }
 
         btnDisconnect.setOnClickListener {
@@ -242,7 +242,7 @@ class MainActivity : Activity() {
             btnConnect.text = "CONNECTED"
             btnConnect.background = getDrawable(R.drawable.bg_input_dark)
             btnConnect.setTextColor(0xFF4CAF50.toInt())
-            tvRelayStatus.text = "Connected to ${RelayClient.serverUrl}"
+            tvRelayStatus.text = "Connected to ${"ws://100.111.44.87:8766"}"
             tvRelayStatus.setTextColor(0xFF4CAF50.toInt())
         } else {
             btnDisconnect.visibility = View.GONE
@@ -272,10 +272,10 @@ class MainActivity : Activity() {
         tvServerStatus.setTextColor(0xFF4CAF50.toInt())
 
         if (relayConnected) {
-            tvRelayAddr.text = RelayClient.serverUrl
+            tvRelayAddr.text = "ws://100.111.44.87:8766"
             tvRelayAddr.setTextColor(0xFF4CAF50.toInt())
             indicatorRelay.setBackgroundResource(R.drawable.bg_status_dot_green)
-        } else if (!RelayClient.serverUrl.isNullOrBlank()) {
+        } else if (!"ws://100.111.44.87:8766".isNullOrBlank()) {
             tvRelayAddr.text = "disconnected"
             tvRelayAddr.setTextColor(0xFF888888.toInt())
             indicatorRelay.setBackgroundResource(R.drawable.bg_status_dot_red)
