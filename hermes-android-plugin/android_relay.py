@@ -578,9 +578,9 @@ async def _handle_http(
         _auth_record_failure(remote_ip)
         return web.json_response({"error": "Unauthorized"}, status=401)
 
-    # Notify route (forward to device)
+    # Notify route — fire-and-forget push to device
     if path == "/notify":
-        pass  # handled below as normal forward
+        return await _handle_notify(request, state)
 
     # Voice control routes (handled locally)
     if path == "/voice/start":
@@ -707,3 +707,51 @@ async def _handle_voice_stop(state: _RelayState, request: web.Request) -> web.Re
 
     logger.info("Voice mode deactivated on device %s", dev.device_id)
     return web.json_response({"status": "ok", "voice_active": False, "device_id": dev.device_id})
+
+
+async def _handle_notify(request: web.Request, state: _RelayState) -> web.Response:
+    """Push a notification to a specific device via WebSocket.
+
+    Expects JSON body: {"title": "...", "body": "..."}
+    Query param: ?device=<device_id> to target a specific device
+    Sends fire-and-forget — no response from phone expected.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+    title = body.get("title", "Hermes")
+    notification_text = body.get("body", body.get("text", ""))
+
+    if not notification_text:
+        return web.json_response({"error": "Missing 'body' field"}, status=400)
+
+    dev = _resolve_device(state, request)
+    if dev is None:
+        available = [{"device_id": d.device_id, "model": d.device_info.get("model")}
+                     for d in state.devices.values()]
+        if len(state.devices) > 1:
+            return web.json_response({
+                "error": "Multiple devices connected. Specify ?device=<id>.",
+                "available_devices": available,
+            }, status=409)
+        return web.json_response(
+            {"error": "No phone connected"}, status=503
+        )
+
+    try:
+        await dev.ws.send_json({
+            "type": "notification",
+            "title": title,
+            "body": notification_text,
+        })
+        logger.info("Notification sent to device %s: %s — %s",
+                    dev.device_id, title, notification_text[:80])
+        return web.json_response({"status": "ok", "delivered": True, "device_id": dev.device_id})
+    except Exception as exc:
+        logger.error("Failed to send notification to device %s: %s", dev.device_id, exc)
+        return web.json_response(
+            {"error": f"Failed to deliver notification: {exc}"},
+            status=502,
+        )

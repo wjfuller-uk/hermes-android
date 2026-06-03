@@ -247,6 +247,8 @@ async def _serve(state: _RelayState, ready: threading.Event) -> None:
         "/voice/stop":    "POST",
         "/camera":        "GET",
         "/shell":         "POST",
+        # Notification push (relay → phone, no round-trip)
+        "/notify":        "POST",
         # READ + WRITE
         "/clipboard":     "BOTH",
     }
@@ -517,6 +519,10 @@ async def _handle_http(
     if path == "/voice/stop":
         return await _handle_voice_stop(state)
 
+    # ── Notification push (relay → phone, fire-and-forget) ────────────────────
+    if path == "/notify":
+        return await _handle_notify(request, state)
+
     # ── Phone connectivity check ────────────────────────────────────────────
     async with state.phone_ws_lock:
         ws = state.phone_ws
@@ -623,3 +629,43 @@ async def _handle_voice_stop(state: _RelayState) -> web.Response:
 
     logger.info("Voice mode deactivated")
     return web.json_response({"status": "ok", "voice_active": False})
+
+
+async def _handle_notify(request: web.Request, state: _RelayState) -> web.Response:
+    """Push a notification to the connected phone via WebSocket.
+
+    Expects JSON body: {"title": "...", "body": "..."}
+    Sends fire-and-forget — no response from phone expected.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+    title = body.get("title", "Hermes")
+    notification_text = body.get("body", body.get("text", ""))
+
+    if not notification_text:
+        return web.json_response({"error": "Missing 'body' field"}, status=400)
+
+    async with state.phone_ws_lock:
+        ws = state.phone_ws
+        if ws is None or ws.closed:
+            return web.json_response(
+                {"error": "No phone connected"}, status=503
+            )
+
+    try:
+        await ws.send_json({
+            "type": "notification",
+            "title": title,
+            "body": notification_text,
+        })
+        logger.info("Notification sent to phone: %s — %s", title, notification_text[:80])
+        return web.json_response({"status": "ok", "delivered": True})
+    except Exception as exc:
+        logger.error("Failed to send notification to phone: %s", exc)
+        return web.json_response(
+            {"error": f"Failed to deliver notification: {exc}"},
+            status=502,
+        )
