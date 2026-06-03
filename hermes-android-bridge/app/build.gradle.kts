@@ -24,9 +24,19 @@ android {
         kotlinCompilerExtensionVersion = "1.5.10"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../hermes-release.keystore")
+            storePassword = "hermes123"
+            keyAlias = "hermes"
+            keyPassword = "hermes123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
