@@ -5,10 +5,20 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hermesandroid.bridge.client.RelayClient
 import com.hermesandroid.bridge.service.VoiceService
+import com.hermesandroid.bridge.ui.DebugPanel
 import com.hermesandroid.bridge.widgets.CardData
 import com.hermesandroid.bridge.ui.VoiceAssistantScreen
 import com.hermesandroid.bridge.ui.VoiceViewModel
@@ -42,6 +52,8 @@ class VoiceActivity : ComponentActivity() {
             val viewModel: VoiceViewModel = viewModel()
             viewModel.updateConnection(RelayClient.isConnected)
             viewModel.updateDeviceName("${Build.BRAND} ${Build.MODEL}")
+
+            var showDebug by remember { mutableStateOf(false) }
 
             // Observe connection status
             DisposableEffect(Unit) {
@@ -107,7 +119,7 @@ class VoiceActivity : ComponentActivity() {
             VoiceAssistantScreen(
                 viewModel = viewModel,
                 onOpenSettings = {
-                    startActivity(Intent(this@VoiceActivity, MainActivity::class.java))
+                    showDebug = true
                 },
                 onOpenDiagnostics = {
                     startActivity(Intent(this@VoiceActivity, DiagnosticsActivity::class.java))
@@ -140,6 +152,11 @@ class VoiceActivity : ComponentActivity() {
                     viewModel.voiceStatusMessage = ""
                 }
             )
+
+            // ── Settings & Debug overlay ──────────────────────────────────
+            if (showDebug) {
+                DebugPanel(onDismiss = { showDebug = false })
+            }
         }
     }
 

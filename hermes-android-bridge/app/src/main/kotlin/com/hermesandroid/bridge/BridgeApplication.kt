@@ -14,6 +14,7 @@ class BridgeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.init(applicationContext)
+        SettingsManager.init(applicationContext)
         PairingManager.init(applicationContext)
         DeviceCapabilities.init(applicationContext)
         WakeLockManager.init(applicationContext)

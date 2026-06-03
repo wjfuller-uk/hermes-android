@@ -12,16 +12,21 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.IBinder
 import com.hermesandroid.bridge.MainActivity
+import com.hermesandroid.bridge.SettingsManager
 import com.hermesandroid.bridge.client.RelayClient
 import com.hermesandroid.bridge.util.AppLogger
+import com.hermesandroid.bridge.wake.WakeWordEngine
 import kotlinx.coroutines.*
 
 /**
  * Foreground service that captures raw PCM audio from the mic and streams it
- * to the relay server. The relay handles ALL processing — VAD, STT (Hermes
- * transcribe_audio), agent dialogue, and TTS (Hermes text_to_speech_tool).
+ * to the relay server. Audio frames are gated by VAD (WakeWordEngine) —
+ * only frames above the configured RMS threshold are sent.
  *
- * The phone is just a thin pipe: mic → PCM → WebSocket → relay → TTS audio → speaker.
+ * The relay handles ALL processing — STT (Hermes transcribe_audio),
+ * agent dialogue, and TTS (Hermes text_to_speech_tool).
+ *
+ * The phone is a thin pipe: mic → VAD gate → PCM → WebSocket → relay → TTS audio → speaker.
  *
  * Auto-stops after 10 seconds to trigger relay-side processing (force_stop).
  * One utterance per mic tap.
@@ -106,16 +111,21 @@ class VoiceService : Service() {
                 }
             }
 
-            // Stream PCM frames to relay via binary WebSocket frames
+            // Stream PCM frames to relay — gated by VAD threshold
             captureJob = scope.launch {
                 val buffer = ByteArray(FRAME_BYTES)
                 while (isActive && isRunning) {
                     val bytesRead = audioRecord?.read(buffer, 0, FRAME_BYTES) ?: -1
                     if (bytesRead > 0) {
-                        try {
-                            RelayClient.sendBinary(buffer.copyOf(bytesRead))
-                        } catch (e: Exception) {
-                            AppLogger.w(TAG, "Failed to send audio frame: ${e.message}")
+                        // VAD gate: only stream frames with energy above threshold
+                        val rms = WakeWordEngine.calculateRms(buffer, bytesRead)
+                        val threshold = SettingsManager.vadThreshold.toFloat()
+                        if (rms >= threshold) {
+                            try {
+                                RelayClient.sendBinary(buffer.copyOf(bytesRead))
+                            } catch (e: Exception) {
+                                AppLogger.w(TAG, "Failed to send audio frame: ${e.message}")
+                            }
                         }
                     } else if (bytesRead < 0) {
                         AppLogger.e(TAG, "AudioRecord read error: $bytesRead")
