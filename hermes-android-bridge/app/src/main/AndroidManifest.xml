@@ -67,6 +67,21 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="landscape"
+            android:keepScreenOn="true" />
+
+        <!-- Hermes Overlay — translucent full-screen voice interaction -->
+        <activity
+            android:name=".ui.HermesOverlayActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.HermesOverlay" />
+
+        <!-- Leanback launcher entry point — uses overlay instead -->
+        <activity
+            android:name=".ui.TvLauncherActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
             android:keepScreenOn="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -118,7 +133,13 @@
             </intent-filter>
         </service>
 
-        <!-- Voice service: wake word detection + microphone streaming -->
+        <!-- Always-on overlay service: wake word + voice (replaces VoiceService for TV) -->
+        <service
+            android:name=".service.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|dataSync" />
+
+        <!-- Voice service: wake word detection + microphone streaming (phone-only) -->
         <service
             android:name=".service.VoiceService"
             android:exported="false"

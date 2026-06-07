@@ -303,6 +303,12 @@ object RelayClient {
             val msgType = json.get("type")?.asString
             if (msgType == "ping") return
 
+            // Handle passive card display from relay
+            if (msgType == "display_card") {
+                handleCardDisplay(json)
+                return
+            }
+
             // Handle chat responses from Hermes
             if (msgType == "chat_response") {
                 val chatText = json.get("text")?.asString ?: ""
@@ -414,5 +420,20 @@ object RelayClient {
                 callback(message, isError)
             }
         } catch (_: Exception) {}
+    }
+
+    /** Relay → TV: display a passive card (no voice interaction required). */
+    var onCardDisplay: ((title: String, body: String, type: String, priority: String) -> Unit)? = null
+
+    private fun handleCardDisplay(json: com.google.gson.JsonObject) {
+        val card = json.getAsJsonObject("card") ?: return
+        val type = card.get("type")?.asString ?: "notification"
+        val title = card.get("title")?.asString ?: ""
+        val body = card.get("body")?.asString ?: ""
+        val priority = card.get("priority")?.asString ?: "normal"
+        val callback = onCardDisplay ?: return
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            callback(title, body, type, priority)
+        }
     }
 }

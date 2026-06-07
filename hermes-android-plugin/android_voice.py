@@ -277,11 +277,14 @@ class TTSEngine:
 async def ask_hermes(text: str, timeout: float = HERMES_TIMEOUT) -> str:
     """Send text to Hermes via `hermes -z` one-shot mode. Returns response text."""
     try:
+        env = os.environ.copy()
+        env["HERMES_INFERENCE_MODEL"] = "mimo-v2.5-pro"
         proc = await asyncio.create_subprocess_exec(
             "hermes", "-z", text,
             "--accept-hooks",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         if proc.returncode != 0:

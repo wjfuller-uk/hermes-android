@@ -6,4 +6,15 @@
         <item name="android:navigationBarColor">#1A1A1A</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+
+    <!-- Dark translucent overlay — Google Assistant style -->
+    <style name="Theme.HermesOverlay" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>
